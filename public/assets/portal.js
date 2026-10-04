@@ -170,6 +170,25 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.querySelectorAll(".compare-picker select").forEach(select=>{
     select.addEventListener("change",()=>select.form?.requestSubmit());
   });
+
+  document.querySelectorAll("form[data-confirm]").forEach(form=>{
+    form.addEventListener("submit",e=>{
+      const message=form.dataset.confirm||"Continue?";
+      if(!window.confirm(message))e.preventDefault();
+    });
+  });
+
+  document.querySelectorAll("form:not(.multi-step-form)").forEach(form=>{
+    form.addEventListener("submit",()=>{
+      if(!form.checkValidity())return;
+      const button=form.querySelector('button[type="submit"],button:not([type])');
+      if(button&&!button.dataset.keepEnabled){
+        button.dataset.originalText=button.textContent;
+        button.disabled=true;
+        button.textContent=button.dataset.loadingText||"Working…";
+      }
+    });
+  });
 });
 
 function escapeHtml(value){
