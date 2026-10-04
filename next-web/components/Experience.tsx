@@ -68,17 +68,38 @@ const catalog = {
   },
 } as const;
 
-const comparisonRows = [
-  ["Monthly Price", "$95/month", "$89/month", "rogers"],
-  ["Download Speed", "1.5 Gbps", "1.5 Gbps", "same"],
-  ["Upload Speed", "1.0 Gbps", "1.0 Gbps", "same"],
-  ["Data Allowance", "Unlimited", "Unlimited", "same"],
-  ["Bill Credit", "$200 bill credit", "$200 bill credit", "same"],
-  ["Installation", "No installation fee", "Free professional installation", "different"],
-  ["Security / Extras", "TELUS Internet Security", "Rogers Security Suite", "different"],
-  ["Contract Term", "24 months", "24 months", "same"],
-  ["Customer Support", "24/7 support", "24/7 support", "same"],
-] as const;
+const comparisonByCategory = {
+  internet: [
+    ["Monthly Price", "$95/month", "$89/month", "different"],
+    ["Download Speed", "1.5 Gbps", "1.5 Gbps", "same"],
+    ["Upload Speed", "1.0 Gbps", "1.0 Gbps", "same"],
+    ["Data Allowance", "Unlimited", "Unlimited", "same"],
+    ["Bill Credit", "$200 bill credit", "$200 bill credit", "same"],
+    ["Installation", "No installation fee", "Free professional installation", "different"],
+    ["Security / Extras", "TELUS Internet Security", "Rogers Security Suite", "different"],
+    ["Contract Term", "24 months", "24 months", "same"],
+    ["Customer Support", "24/7 support", "24/7 support", "same"],
+  ],
+  mobility: [
+    ["Monthly Price", "$45/month", "$45/month", "same"],
+    ["High-speed Data", "100GB", "100GB", "same"],
+    ["Network", "5G+", "5G+", "same"],
+    ["Roaming", "Canada + U.S.", "Canada-wide", "different"],
+    ["Closing Credit", "$25", "Varies by offer", "different"],
+    ["Device Type", "BYOD", "BYOD", "same"],
+    ["Multi-line", "Available", "Available", "same"],
+    ["Support", "TELUS Mobility support", "Rogers Wireless support", "different"],
+  ],
+  bundles: [
+    ["Monthly Price", "$120/month", "$115/month", "different"],
+    ["Home Internet", "1.5 Gbps PureFibre", "1.5 Gbps Ignite", "different"],
+    ["Mobile Data", "100GB", "100GB", "same"],
+    ["Bundle Savings", "Included", "Included", "same"],
+    ["Private Credits", "Available", "Available", "same"],
+    ["Installation", "TELUS guided install", "Rogers professional install", "different"],
+    ["Order Flow", "One SecureLink request", "One SecureLink request", "same"],
+  ],
+} as const;
 
 function ProviderMark({ provider }: { provider: "telus" | "rogers" }) {
   return (
@@ -96,6 +117,7 @@ export default function Experience() {
   const [region, setRegion] = useState("British Columbia");
   const [notice, setNotice] = useState("");
   const current = useMemo(() => catalog[category], [category]);
+  const comparisonRows = comparisonByCategory[category];
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -195,7 +217,7 @@ export default function Experience() {
               <div className="comparison-rows">
                 {comparisonRows.map(([feature,telus,rogers,state]) => (
                   <div className={"comparison-row " + (highlight && state === "different" ? "is-different" : "")} key={feature}>
-                    <strong>{feature}</strong><span>{telus}</span><span>{rogers}{feature === "Monthly Price" && <i>Lower price</i>}</span>
+                    <strong>{feature}</strong><span>{telus}</span><span>{rogers}{feature === "Monthly Price" && category !== "mobility" && <i>Lower price</i>}</span>
                   </div>
                 ))}
               </div>
