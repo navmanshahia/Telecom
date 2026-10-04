@@ -1,4 +1,4 @@
-name: PHP lint
+name: Production checks
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  lint:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,3 +20,11 @@ jobs:
           extensions: pdo_sqlite, sodium
       - name: Lint PHP
         run: find . -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Validate PWA manifest
+        run: php -r '$j=json_decode(file_get_contents("public/manifest.webmanifest"),true); if(!is_array($j)){fwrite(STDERR,json_last_error_msg().PHP_EOL); exit(1);} echo "manifest ok".PHP_EOL;'
+      - name: Check JavaScript syntax
+        run: |
+          node --check public/assets/portal.js
+          node --check public/service-worker.js
+      - name: Check whitespace errors
+        run: git diff --check HEAD^ HEAD
