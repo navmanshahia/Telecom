@@ -70,3 +70,178 @@ body.cinematic{overflow-x:hidden}
  .catalog-tools{padding:12px 0}
  .deal-card{min-height:auto;padding:20px}
 }
+
+/* Production UI repair — customer forms + admin mobile surfaces */
+.cinematic .card{
+  background:linear-gradient(145deg,rgba(12,23,50,.96),rgba(24,14,43,.94));
+  border:1px solid rgba(126,139,255,.20);
+  color:#f7f9ff;
+  box-shadow:0 24px 70px rgba(0,0,0,.34),inset 0 1px rgba(255,255,255,.025);
+}
+.cinematic .card:hover{box-shadow:0 28px 80px rgba(0,0,0,.40);transform:translateY(-2px)}
+.cinematic .card h1,.cinematic .card h2,.cinematic .card h3{color:#fff}
+.cinematic .card p{color:#a8b3cc}
+.cinematic .card label{color:#dfe6f7}
+.cinematic .card .muted{color:#99a6c0}
+.cinematic .card .price{color:#fff}
+.cinematic .card .reward{background:rgba(24,87,75,.48);border:1px solid rgba(82,226,183,.24);color:#caffee}
+.cinematic .hot{background:linear-gradient(145deg,rgba(71,43,21,.92),rgba(42,24,22,.92));border-color:rgba(255,174,91,.34)}
+.cinematic .stat span{color:#96a4be}
+.cinematic .stat strong{color:#fff}
+
+.cinematic input:not([type="checkbox"]):not([type="radio"]),
+.cinematic select,
+.cinematic textarea{
+  min-height:48px;
+  background:#0a1430;
+  border:1px solid rgba(151,167,214,.24);
+  color:#f8fbff;
+  border-radius:12px;
+  padding:12px 14px;
+  outline:none;
+  box-shadow:none;
+}
+.cinematic textarea{min-height:112px;resize:vertical}
+.cinematic input::placeholder,.cinematic textarea::placeholder{color:#66738f}
+.cinematic input:focus,.cinematic select:focus,.cinematic textarea:focus{
+  border-color:#6979ff;
+  box-shadow:0 0 0 3px rgba(95,111,255,.15);
+}
+.cinematic select{
+  -webkit-appearance:none;appearance:none;
+  padding-right:40px;
+  background-image:
+    linear-gradient(45deg,transparent 50%,#9aa9c7 50%),
+    linear-gradient(135deg,#9aa9c7 50%,transparent 50%);
+  background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;
+  background-size:5px 5px,5px 5px;
+  background-repeat:no-repeat;
+}
+.cinematic select option{background:#10182b;color:#fff}
+.cinematic input[type="checkbox"],.cinematic input[type="radio"]{
+  width:18px;height:18px;min-height:0;margin:0;accent-color:#6674ff;display:inline-block;vertical-align:middle;
+}
+.cinematic label:has(input[type="checkbox"]),.cinematic label:has(input[type="radio"]){
+  display:flex;grid-template-columns:none;flex-direction:row;align-items:center;gap:10px;
+}
+.cinematic button,.cinematic .button{
+  background:linear-gradient(90deg,#5238ff,#23b8ff);
+  color:#fff;border:0;box-shadow:0 12px 32px rgba(72,91,255,.20)
+}
+.cinematic button:hover,.cinematic .button:hover{filter:brightness(1.06)}
+.cinematic .secondary{
+  background:rgba(255,255,255,.05);
+  color:#e7ecf8;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:none
+}
+.cinematic .danger{background:linear-gradient(90deg,#9e2430,#d33a48)}
+.cinematic .alert{
+  background:rgba(117,77,17,.22);
+  border:1px solid rgba(252,194,80,.25);
+  color:#ffe8b2;
+}
+.cinematic .alert.success{
+  background:rgba(25,100,77,.24);
+  border-color:rgba(74,223,177,.25);
+  color:#c9ffed;
+}
+
+.application-card{
+  width:min(920px,100%);
+  margin:50px auto 80px;
+  padding:34px;
+}
+.application-card>h1{font-size:clamp(38px,6vw,66px);letter-spacing:-.055em;margin:18px 0 8px}
+.application-card>.price{margin:10px 0 16px}
+.application-card form{margin-top:28px;gap:17px}
+.application-card form>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.application-card h3{margin:12px 0 0}
+.application-card button[type="submit"]{min-height:54px;font-size:15px;border-radius:14px}
+
+/* Admin surfaces */
+.cinematic .adminbar{
+  position:sticky;top:8px;z-index:30;
+  display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  padding:7px;
+  background:rgba(10,19,43,.92);
+  backdrop-filter:blur(20px) saturate(130%);
+  border:1px solid rgba(143,157,211,.18);
+  border-radius:17px;
+  box-shadow:0 18px 45px rgba(0,0,0,.28);
+}
+.cinematic .adminbar::-webkit-scrollbar{display:none}
+.cinematic .adminbar a{
+  flex:0 0 auto;padding:10px 13px;border-radius:11px;color:#bfc9df;font-size:12px
+}
+.cinematic .adminbar a:hover{background:rgba(104,119,255,.14);color:#fff}
+.cinematic .pagehead,.cinematic .adminhero{margin-top:42px}
+.cinematic .eyebrow{color:#747f99}
+.cinematic .stats{gap:12px}
+.cinematic .pipeline .pipe,.cinematic .funnel>div{
+  background:linear-gradient(145deg,#0d1830,#11192a);
+  border:1px solid rgba(255,255,255,.07)
+}
+.cinematic .tablewrap{background:linear-gradient(145deg,#0c1731,#10172a);border-color:rgba(255,255,255,.09)}
+.cinematic .table th{color:#a8b3ca;font-size:11px}
+.cinematic .table td{color:#edf2ff}
+.cinematic details{border-top-color:rgba(255,255,255,.10)}
+.cinematic code{background:#091226;color:#cfe0ff}
+.cinematic .metricrow{border-bottom-color:rgba(255,255,255,.09)}
+.cinematic .searchbar input{background:#0a1430;color:#fff}
+.cinematic .searchbar button{min-width:110px}
+
+/* Remove the old bright-card appearance from all dashboard forms. */
+.cinematic section.card.narrow,
+.cinematic article.card,
+.cinematic .stats .card,
+.cinematic .twocol .card{
+  background:linear-gradient(145deg,rgba(12,23,50,.96),rgba(24,14,43,.94));
+}
+
+/* Mobile admin + form cleanup */
+@media(max-width:760px){
+  .cinematic .shell{padding:12px 14px 42px}
+  .portal-nav{min-height:68px;height:auto;padding:8px 0;margin-bottom:8px}
+  .cinematic .links{gap:5px;justify-content:flex-end}
+  .cinematic .links a{
+    padding:8px 10px;border:1px solid rgba(255,255,255,.10);
+    border-radius:999px;background:rgba(255,255,255,.035);font-size:10px
+  }
+  .sl-brand{font-size:14px;min-width:0}
+  .sl-brand span{line-height:1.02}
+  .sl-brand small{display:block!important;font-size:5px}
+  .cinematic .adminbar{
+    margin:10px -2px 24px;top:6px;padding:6px;border-radius:15px
+  }
+  .cinematic .adminbar a{padding:9px 12px;font-size:11px}
+  .cinematic .pagehead,.cinematic .adminhero{margin:32px 0 18px}
+  .cinematic .pagehead h1,.cinematic .adminhero h1{font-size:clamp(38px,11vw,58px);line-height:.94}
+  .cinematic .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cinematic .stats .card{min-height:120px;padding:18px}
+  .cinematic .stat strong{font-size:31px}
+  .application-card{margin:26px auto 60px;padding:22px 18px;border-radius:22px}
+  .application-card form>.grid,.cinematic .formgrid{grid-template-columns:1fr}
+  .application-card>h1{font-size:11vw}
+  .application-card>.price{font-size:36px}
+  .cinematic form{gap:13px}
+  .cinematic input:not([type="checkbox"]):not([type="radio"]),
+  .cinematic select,.cinematic textarea{font-size:16px;min-height:50px}
+  .cinematic textarea{min-height:100px}
+  .pipeline,.funnel{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .pipe,.funnel>div{min-height:115px;padding:18px}
+  .pipe span,.funnel strong{font-size:30px}
+  .tablewrap{border-radius:18px;padding:0;overflow-x:auto}
+  .table{min-width:720px}
+  .searchbar{flex-direction:column}
+  .searchbar button{width:100%}
+}
+@media(max-width:430px){
+  .cinematic .links a{padding:7px 8px;font-size:9px}
+  .sl-brand small{display:none!important}
+  .cinematic .stats{gap:9px}
+  .cinematic .stats .card{min-height:108px;padding:15px}
+  .cinematic .stat strong{font-size:28px}
+  .pipeline,.funnel{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
