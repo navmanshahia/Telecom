@@ -1,6 +1,6 @@
 ---
 deployment:
   tasks:
-    - export APPROOT=/home/elitdtsa/public_html/Telecom
-    - /bin/mkdir -p $APPROOT/storage/logs
-    - /bin/chmod 770 $APPROOT/storage
+    - export APPROOT="$HOME/public_html/Telecom"
+    - /bin/mkdir -p "$APPROOT/storage/logs"
+    - /bin/chmod 770 "$APPROOT/storage"
