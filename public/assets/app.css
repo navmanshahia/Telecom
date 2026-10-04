@@ -1402,3 +1402,6 @@ body{overflow-x:hidden}
 @media(max-width:760px){.executive-grid{grid-template-columns:1fr 1fr}.customer360-hero,.customer-pagehead,.sales-hero{align-items:flex-start;flex-direction:column}.c360-kpis{display:grid;grid-template-columns:1fr 1fr;width:100%}.c360-grid,.document-admin-grid,.customer-documents,.customer-notifications,.sales-grid,.bundle-products{grid-template-columns:1fr}.bundle-builder{grid-template-columns:1fr}.bundle-summary{position:sticky;bottom:76px;top:auto;z-index:20}.customer-pagehead h1,.sales-hero h1,.bundle-hero h1{font-size:13vw}.sales-wide{grid-column:auto}.command-result{grid-template-columns:1fr}.command-search-page form{display:grid}}
 
 .quote-empty{grid-column:1/-1;padding:22px;border:1px dashed #cfd7e6;border-radius:16px;background:#f8faff;display:grid;gap:5px}.quote-empty span{font-size:12px;color:#667085}.quote-credit{display:inline-flex;margin:7px 0 2px;padding:7px 10px;border-radius:999px;background:#ecfdf3;color:#067647;font-size:12px;font-weight:850}.quote-select small strong{color:#067647}
+
+/* Quote builder must never be hidden by global reveal animation. */
+.js-ready .quote-builder-card,.quote-builder-card{opacity:1!important;transform:none!important;visibility:visible!important;min-height:0!important}
