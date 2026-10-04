@@ -52,8 +52,19 @@ The main branch now includes:
 
 ### Existing production databases
 
-The runtime creates the optional merchandising/rate-limit tables safely with `CREATE TABLE IF NOT EXISTS`. For an explicit migration record, run `app/migrations/006_merchandising_and_rate_limits.sql` once against an existing database.
+The runtime keeps a `schema_migrations` ledger and performs the additive v007 hardening migration safely: email verification metadata, known activation/installation fees, commission tracking, and one-time security-token tables. The earlier merchandising/rate-limit migration remains available as `app/migrations/006_merchandising_and_rate_limits.sql`.
+
+Before a production change, use **Admin → System → Download database backup**. The backup handler checkpoints SQLite WAL first and requires an authenticated admin session plus CSRF token.
 
 ### Email-dependent account features
 
-Password-reset email and email verification should only be enabled after a transactional email provider/SMTP worker is connected. The application does not fake delivery of security-critical email.
+Registration now creates an email-verification token and password recovery uses single-use, hashed, expiring reset tokens. Security messages are queued in `communications`; connect a transactional SMTP/mail worker for external delivery. Keep `REQUIRE_EMAIL_VERIFICATION=false` until delivery is working, then set it to `true` to require verification at sign-in.
+
+### Sales operations additions
+
+- Provider metadata/status/order editor
+- Deal activation and installation fee fields included in effective-cost comparison
+- Appointment and provider-reference tracking
+- Salesperson and commission amount/status tracking
+- Provider conversion, projected activated MRR and commission pipeline analytics
+- System health view with schema version, database size, queued email and verification counts
