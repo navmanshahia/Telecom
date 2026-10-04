@@ -15,6 +15,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     if(is_file($complete)) db()->exec(file_get_contents($complete));
     $referrals=__DIR__.'/migrations/005_referral_programs.sql';
     if(is_file($referrals)) db()->exec(file_get_contents($referrals));
+    $hardening=__DIR__.'/migrations/006_production_hardening.sql';
+    if(is_file($hardening)) db()->exec(file_get_contents($hardening));
     $name=trim($_POST['name']??''); $email=strtolower(trim($_POST['email']??'')); $password=$_POST['password']??'';
     if(!$name || !filter_var($email,FILTER_VALIDATE_EMAIL) || strlen($password)<12) exit('Use a valid name/email and a password of at least 12 characters.');
     $s=db()->prepare("INSERT INTO users(name,email,password_hash,role,status,approved_at) VALUES(?,?,?,'owner','approved',datetime('now'))");
