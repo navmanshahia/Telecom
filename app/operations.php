@@ -340,6 +340,11 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS commission_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER NOT NULL REFERENCES providers(id),category TEXT,amount REAL NOT NULL DEFAULT 0,salesperson_percent REAL NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status,created_at)");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_commission_rules_provider ON commission_rules(provider_id,active)");
+    db()->exec("CREATE TABLE IF NOT EXISTS customer_notifications(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,message TEXT NOT NULL,link TEXT,is_read INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_customer_notifications_user ON customer_notifications(user_id,is_read,created_at)");
+    db()->exec("CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,document_type TEXT NOT NULL,label TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'requested',storage_path TEXT,original_name TEXT,expires_at TEXT,reviewed_by INTEGER REFERENCES users(id),reviewed_at TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id,status,created_at)");
+    db()->exec("CREATE TABLE IF NOT EXISTS salesperson_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,display_name TEXT,active INTEGER NOT NULL DEFAULT 1,commission_percent REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     foreach([['lead_followup','Lead follow-up',1,60],['quote_followup','Quote follow-up',1,1440],['appointment_reminder','Appointment reminder',1,1440],['offer_expiry','Offer expiry',1,0]] as $rule){
         db()->prepare("INSERT OR IGNORE INTO automation_rules(rule_key,name,enabled,delay_minutes) VALUES(?,?,?,?)")->execute($rule);
     }
@@ -507,6 +512,33 @@ function customer_dashboard_data(array $u): array {
     return ['orders'=>$orders,'referrals'=>$ref,'featured'=>featured_deals(3)];
 }
 
+
+
+function customer_notification(int $userId,string $title,string $message,string $link=''): void {
+    db()->prepare("INSERT INTO customer_notifications(user_id,title,message,link) VALUES(?,?,?,?)")->execute([$userId,$title,$message,$link]);
+}
+function unread_notification_count(int $userId): int { return (int)scalar("SELECT COUNT(*) FROM customer_notifications WHERE user_id=? AND is_read=0",[$userId]); }
+function customer_360(int $userId): array {
+    $u=rows("SELECT * FROM users WHERE id=? LIMIT 1",[$userId])[0]??null;if(!$u)return [];
+    return ['user'=>$u,'orders'=>rows("SELECT o.*,p.name provider,d.name deal FROM orders o JOIN providers p ON p.id=o.provider_id JOIN deals d ON d.id=o.deal_id WHERE o.user_id=? ORDER BY o.id DESC",[$userId]),'quotes'=>rows("SELECT * FROM quotes WHERE user_id=? ORDER BY id DESC",[$userId]),'documents'=>rows("SELECT * FROM documents WHERE user_id=? ORDER BY id DESC",[$userId]),'communications'=>rows("SELECT * FROM communications WHERE user_id=? ORDER BY id DESC LIMIT 50",[$userId]),'notifications'=>rows("SELECT * FROM customer_notifications WHERE user_id=? ORDER BY id DESC LIMIT 50",[$userId])];
+}
+function global_command_search(string $q): array {
+    $q=trim($q);if(strlen($q)<2)return [];$like='%'.$q.'%';$out=[];
+    foreach(rows("SELECT id,name,email,phone FROM users WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? LIMIT 7",[$like,$like,$like]) as $x)$out[]=['type'=>'Customer','title'=>$x['name'],'meta'=>$x['email'].' · '.$x['phone'],'url'=>'?page=admin&view=customer360&id='.$x['id']];
+    foreach(rows("SELECT id,public_id,status,provider_reference FROM orders WHERE public_id LIKE ? OR provider_reference LIKE ? OR contact_email LIKE ? OR contact_phone LIKE ? LIMIT 7",[$like,$like,$like,$like]) as $x)$out[]=['type'=>'Order','title'=>$x['public_id'],'meta'=>$x['status'].' · '.($x['provider_reference']?:'No provider ref'),'url'=>'?page=admin&view=orders&q='.rawurlencode($x['public_id'])];
+    foreach(rows("SELECT id,name,email,phone,lead_score FROM leads WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? LIMIT 7",[$like,$like,$like]) as $x)$out[]=['type'=>'Lead','title'=>$x['name'],'meta'=>'Score '.$x['lead_score'].' · '.($x['phone']?:$x['email']),'url'=>'?page=admin&view=leads&edit='.$x['id']];
+    foreach(rows("SELECT id,public_id,customer_name,status FROM quotes WHERE public_id LIKE ? OR customer_name LIKE ? OR customer_email LIKE ? LIMIT 5",[$like,$like,$like]) as $x)$out[]=['type'=>'Quote','title'=>$x['public_id'],'meta'=>$x['customer_name'].' · '.$x['status'],'url'=>'?page=admin&view=quotes'];
+    return array_slice($out,0,20);
+}
+function executive_dashboard_v3(): array {
+    $month=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE status IN ('activated','completed') AND created_at>=datetime('now','start of month')");
+    $orders=(int)scalar("SELECT COUNT(*) FROM orders WHERE created_at>=datetime('now','start of month')");
+    $activated=(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('activated','completed') AND created_at>=datetime('now','start of month')");
+    return ['month_commission'=>$month,'month_orders'=>$orders,'month_activated'=>$activated,'conversion'=>$orders?round($activated*100/$orders,1):0,'pipeline'=>(float)scalar("SELECT COALESCE(SUM(estimated_value),0) FROM leads WHERE stage NOT IN ('activated','lost')"),'hot_leads'=>(int)scalar("SELECT COUNT(*) FROM leads WHERE lead_score>=75 AND stage NOT IN ('activated','lost')"),'quotes_open'=>(int)scalar("SELECT COUNT(*) FROM quotes WHERE status IN ('sent','viewed')"),'unpaid_commission'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status IN ('pending','approved')")];
+}
+function salesperson_dashboard(array $u): array {
+    $name=(string)$u['name'];return ['leads'=>rows("SELECT * FROM leads WHERE sales_agent=? ORDER BY lead_score DESC,updated_at DESC LIMIT 50",[$name]),'orders'=>rows("SELECT o.*,p.name provider,d.name deal FROM orders o JOIN providers p ON p.id=o.provider_id JOIN deals d ON d.id=o.deal_id WHERE o.sales_agent=? ORDER BY o.id DESC LIMIT 50",[$name]),'tasks'=>rows("SELECT * FROM tasks WHERE assigned_to=? AND status='open' ORDER BY priority DESC,due_at LIMIT 50",[(int)$u['id']]),'commission'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE sales_agent=? AND commission_status IN ('pending','approved','paid')",[$name])];
+}
 
 function quote_calculate(array $dealIds): array {
     $items=[];$monthly=0.0;$regular=0.0;$credits=0.0;$fees=0.0;$term=24;
