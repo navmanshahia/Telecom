@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS notification_queue(
  order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
  lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
  channel TEXT NOT NULL DEFAULT 'email',
+ notification_type TEXT NOT NULL DEFAULT 'transactional',
  recipient TEXT,
  subject TEXT NOT NULL,
  message TEXT NOT NULL,
