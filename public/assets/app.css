@@ -27,7 +27,7 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;background-ima
 @media(max-width:800px){.portal-hero{grid-template-columns:1fr;min-height:760px;padding:50px 0 20px}.portal-hero h1{font-size:clamp(58px,15vw,90px)}.signal-sculpture{position:absolute;width:320px;max-width:80vw;right:-90px;bottom:10px;opacity:.5;z-index:-1}.feature-grid{grid-template-columns:1fr}.feature-card{min-height:300px}.portal-cta{padding:42px 25px;margin-top:75px}.experience-strip{margin-left:0;margin-right:0}.deal-toolbar{align-items:start;flex-direction:column;gap:10px}}
 @media(max-width:520px){.shell{padding:14px 14px 50px}.glass-nav{top:8px;border-radius:18px;padding:10px}.links{gap:2px}.links a{font-size:11px;padding:8px 6px}.brand{font-size:15px}.brand-orbit{scale:.8}.portal-hero{min-height:700px}.portal-hero .muted{font-size:15px}.hero-chips{margin-top:26px}.experience-strip{gap:8px}.experience-strip i{min-width:15px}.feature-card{border-radius:24px}.deal-grid{grid-template-columns:1fr}.portal-cta h2{font-size:48px}}
 
-.card,.deal-toolbar,.portal-cta,.experience-strip{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.2,1),box-shadow .3s}.revealed{opacity:1!important;transform:none!important}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.card,.deal-toolbar,.portal-cta,.experience-strip{opacity:1;transform:none}}
+.card,.deal-toolbar,.portal-cta,.experience-strip{opacity:1;transform:none;transition:box-shadow .3s}.revealed{opacity:1!important;transform:none!important}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 
 /* Mobile art-direction + auth experience */
 .mobile-signal{display:none}
@@ -95,7 +95,7 @@ body{overflow-x:hidden}
 .provider-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:50px 0 90px}
 .provider-story{min-height:460px;border-radius:34px;padding:45px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden}
 .provider-story span{position:absolute;top:36px;left:42px;font-size:9px;letter-spacing:.19em;font-weight:900}
-.provider-story h2{font-size:clamp(46px,5vw,76px);line-height:.88;letter-spacing:-.06em;margin:0 0 24px}
+.provider-story h2{font-size:clamp(46px,5vw,76px);line-height:.88;letter-spacing:-.06em;margin:0 0 24px;color:#f8fbff;text-shadow:0 2px 22px rgba(0,0,0,.18)}
 .provider-story p{max-width:520px;color:#b6bdc8;line-height:1.6}
 .telus-story{background:radial-gradient(circle at 85% 15%,#66cc0030,transparent 28%),radial-gradient(circle at 8% 90%,#7f51a850,transparent 38%),linear-gradient(145deg,#17101e,#0d1118);border:1px solid #8e69a944}
 .telus-story span{color:#9ae551}
@@ -107,7 +107,7 @@ body{overflow-x:hidden}
 .how-it-works li{display:grid;grid-template-columns:58px 1fr;gap:20px;padding:25px 0;border-bottom:1px solid #ffffff12}
 .how-it-works li>b{color:#7d8ba7}
 .how-it-works li span{color:#9aa6bd;line-height:1.55}
-.how-it-works li strong{display:block;color:#fff;font-size:20px;margin-bottom:5px}
+.how-it-works li strong{display:block;color:#101828;font-size:20px;margin-bottom:5px}
 
 /* Provider-aware deal catalogue */
 .catalog-tabs{display:flex;gap:7px;overflow:auto;padding:0 0 22px;scrollbar-width:none}
@@ -290,4 +290,23 @@ body{overflow-x:hidden}
  .provider-admin-grid,.order-admin-grid{grid-template-columns:1fr}
  .order-search{width:100%;min-width:0}
  .application-summary .summary-facts{grid-template-columns:1fr}
+}
+
+
+/* Visibility and contrast hotfix */
+.storefront-hero,.shop-by,.provider-split,.how-it-works,.featured-section,.portal-cta{color:#101828}
+.provider-story{color:#f8fbff}
+.provider-story h2,.provider-story h3,.provider-story strong{color:#f8fbff!important}
+.provider-story p{color:#d4d8e1!important}
+.how-it-works{color:#101828}
+.how-it-works h2,.how-it-works strong{color:#101828!important}
+.how-it-works li span{color:#667085!important}
+.portal-cta,.portal-cta h2,.portal-cta .eyebrow{color:#fff!important}
+.adminhero h1,.pagehead h1,.section h1,.section h2,.card h1,.card h2,.card h3{color:#101828}
+.adminbar,.adminbar a{color:#344054}
+@media(max-width:760px){
+ .provider-story{min-height:380px;padding:34px 28px}
+ .provider-story span{left:28px;top:28px}
+ .provider-story h2{font-size:clamp(42px,13vw,64px)}
+ .how-it-works{gap:34px;padding:64px 0}
 }
