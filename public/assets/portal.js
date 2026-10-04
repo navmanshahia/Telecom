@@ -206,6 +206,14 @@ document.addEventListener("DOMContentLoaded",()=>{
   window.addEventListener("offline",()=>networkToast("You’re offline. SecureLink will reconnect when your network returns."));
   window.addEventListener("online",()=>networkToast("Back online."));
 
+
+  document.querySelectorAll("[data-bundle-builder]").forEach(builder=>{
+    const items=[...builder.querySelectorAll("[data-bundle-item]")],monthly=builder.querySelector("[data-bundle-monthly]"),credit=builder.querySelector("[data-bundle-credit]"),count=builder.querySelector("[data-bundle-count]");
+    const update=()=>{const selected=items.filter(x=>x.checked),m=selected.reduce((s,x)=>s+Number(x.dataset.price||0),0),cr=selected.reduce((s,x)=>s+Number(x.dataset.credit||0),0);if(monthly)monthly.textContent="$"+m.toFixed(2)+"/mo";if(credit)credit.textContent="$"+cr.toFixed(0)+" credits";if(count)count.textContent=selected.length+" service"+(selected.length===1?"":"s")+" selected";};
+    items.forEach(x=>x.addEventListener("change",update));update();
+  });
+  document.addEventListener("keydown",e=>{if(e.key==="/"&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||"")){const link=document.querySelector('a[href*="view=search"]');if(link){e.preventDefault();location.href=link.href;}}});
+
   document.querySelectorAll(".compare-picker select").forEach(select=>{
     select.addEventListener("change",()=>select.form?.requestSubmit());
   });
