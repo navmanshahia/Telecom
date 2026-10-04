@@ -115,13 +115,69 @@ function db_column_exists(string $table,string $column): bool {
 }
 function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS schema_migrations(version TEXT PRIMARY KEY,applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+
+    // Bring older production databases up to the current baseline without requiring
+    // a manual migration before the admin dashboard can load.
+    $schemaFile=__DIR__.'/schema.sql';
+    if(is_file($schemaFile)){
+        $schema=file_get_contents($schemaFile);
+        if($schema!==false) db()->exec($schema);
+    }
     if(!db_table_exists('users')) return;
 
-    if(!db_column_exists('users','email_verified_at')) db()->exec("ALTER TABLE users ADD COLUMN email_verified_at TEXT");
-    if(db_table_exists('deals') && !db_column_exists('deals','activation_fee')) db()->exec("ALTER TABLE deals ADD COLUMN activation_fee REAL NOT NULL DEFAULT 0");
-    if(db_table_exists('deals') && !db_column_exists('deals','installation_fee')) db()->exec("ALTER TABLE deals ADD COLUMN installation_fee REAL NOT NULL DEFAULT 0");
-    if(db_table_exists('orders') && !db_column_exists('orders','commission_amount')) db()->exec("ALTER TABLE orders ADD COLUMN commission_amount REAL NOT NULL DEFAULT 0");
-    if(db_table_exists('orders') && !db_column_exists('orders','commission_status')) db()->exec("ALTER TABLE orders ADD COLUMN commission_status TEXT NOT NULL DEFAULT 'pending'");
+    $addColumn=function(string $table,string $column,string $definition): void {
+        if(db_table_exists($table) && !db_column_exists($table,$column)){
+            db()->exec("ALTER TABLE ".$table." ADD COLUMN ".$column." ".$definition);
+        }
+    };
+
+    $addColumn('users','status',"TEXT NOT NULL DEFAULT 'pending'");
+    $addColumn('users','approved_at','TEXT');
+    $addColumn('users','email_verified_at','TEXT');
+
+    $addColumn('providers','description','TEXT');
+    $addColumn('providers','website','TEXT');
+    $addColumn('providers','status',"TEXT NOT NULL DEFAULT 'active'");
+    $addColumn('providers','display_order','INTEGER NOT NULL DEFAULT 0');
+
+    $addColumn('deals','regular_price','REAL');
+    $addColumn('deals','bill_credit','REAL NOT NULL DEFAULT 0');
+    $addColumn('deals','referral_reward','REAL NOT NULL DEFAULT 0');
+    $addColumn('deals','other_reward','REAL NOT NULL DEFAULT 0');
+    $addColumn('deals','activation_fee','REAL NOT NULL DEFAULT 0');
+    $addColumn('deals','installation_fee','REAL NOT NULL DEFAULT 0');
+    $addColumn('deals','term_months','INTEGER');
+    $addColumn('deals','speed_data','TEXT');
+    $addColumn('deals','fine_print','TEXT');
+    $addColumn('deals','status',"TEXT NOT NULL DEFAULT 'draft'");
+    $addColumn('deals','starts_at','TEXT');
+    $addColumn('deals','expires_at','TEXT');
+
+    $addColumn('orders','campaign_id','INTEGER');
+    $addColumn('orders','lead_id','INTEGER');
+    $addColumn('orders','sales_agent','TEXT');
+    $addColumn('orders','provider_reference','TEXT');
+    $addColumn('orders','appointment_at','TEXT');
+    $addColumn('orders','admin_notes','TEXT');
+    $addColumn('orders','lost_reason','TEXT');
+    $addColumn('orders','first_contact_at','TEXT');
+    $addColumn('orders','commission_amount','REAL NOT NULL DEFAULT 0');
+    $addColumn('orders','commission_status',"TEXT NOT NULL DEFAULT 'pending'");
+
+    db()->exec("CREATE TABLE IF NOT EXISTS referral_programs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id INTEGER NOT NULL REFERENCES providers(id),
+        name TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1,
+        reward_amount REAL NOT NULL DEFAULT 0,
+        promo_reward_amount REAL,
+        promo_ends_at TEXT,
+        retention_days INTEGER NOT NULL DEFAULT 0,
+        bonus_5_amount REAL NOT NULL DEFAULT 0,
+        bonus_10_amount REAL NOT NULL DEFAULT 0,
+        terms TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )");
 
     db()->exec("CREATE TABLE IF NOT EXISTS email_verification_tokens(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,7 +198,7 @@ function ensure_platform_schema(): void {
     )");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id,used_at)");
 
-    $version='007_sales_platform_hardening';
+    $version='008_legacy_database_compatibility';
     $s=db()->prepare("SELECT 1 FROM schema_migrations WHERE version=?");
     $s->execute([$version]);
     if(!$s->fetchColumn()){
