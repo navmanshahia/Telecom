@@ -89,8 +89,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   $status=$_POST['status']??'submitted';$lost=in_array($status,['cancelled','rejected'],true)?trim($_POST['lost_reason']??''):null;
   $providerReference=trim($_POST['provider_reference']??'');$appointment=trim($_POST['appointment_at']??'')?:null;
   $commissionStatus=$_POST['commission_status']??'pending';if(!in_array($commissionStatus,['pending','approved','paid','void'],true))$commissionStatus='pending';
+  $manualCommission=max(0,(float)($_POST['commission_amount']??0));$autoCommission=commission_for_order_v2($id);$commissionAmount=$autoCommission>0?$autoCommission:$manualCommission;
   db()->prepare("UPDATE orders SET status=?,lost_reason=?,provider_reference=?,appointment_at=?,sales_agent=?,commission_amount=?,commission_status=?,first_contact_at=CASE WHEN first_contact_at IS NULL AND ?!='submitted' THEN datetime('now') ELSE first_contact_at END,updated_at=datetime('now') WHERE id=?")
-    ->execute([$status,$lost,$providerReference,$appointment,trim($_POST['sales_agent']??''),max(0,(float)($_POST['commission_amount']??0)),$commissionStatus,$status,$id]);
+    ->execute([$status,$lost,$providerReference,$appointment,trim($_POST['sales_agent']??''),$commissionAmount,$commissionStatus,$status,$id]);
   $customerChanged=($before['status']??null)!==$status || ($before['provider_reference']??null)!==$providerReference || ($before['appointment_at']??null)!==$appointment;
   if($customerChanged)queue_order_status_notification($id,(int)$a['id']);
   sync_referral_success_for_order($id);
