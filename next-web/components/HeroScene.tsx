@@ -34,6 +34,10 @@ function NetworkCore() {
 
   return (
     <group ref={group}>
+      <mesh rotation={[0.2,0.5,0]} scale={3.25}>
+        <torusKnotGeometry args={[1.05,0.004,180,20,2,5]} />
+        <meshBasicMaterial color="#47dfff" transparent opacity={0.12} />
+      </mesh>
       <Float speed={1.25} rotationIntensity={0.35} floatIntensity={0.55}>
         <mesh ref={inner}>
           <icosahedronGeometry args={[1.18, 5]} />
@@ -122,6 +126,7 @@ export default function HeroScene() {
         <ambientLight intensity={0.5} />
         <pointLight position={[4, 5, 5]} intensity={14} color="#7be8ff" />
         <pointLight position={[-4, -3, 2]} intensity={9} color="#725cff" />
+        <fog attach="fog" args={["#02070c",7,15]} />
         <NetworkCore />
       </Canvas>
     </div>
