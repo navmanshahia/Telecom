@@ -348,6 +348,8 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,display_name TEXT,active INTEGER NOT NULL DEFAULT 1,commission_percent REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id))");
     db()->exec("CREATE TABLE IF NOT EXISTS bundle_carts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,deal_ids_json TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'active',monthly_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS bundle_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER REFERENCES providers(id),name TEXT NOT NULL,required_categories TEXT NOT NULL DEFAULT '[]',discount_monthly REAL NOT NULL DEFAULT 0,bonus_credit REAL NOT NULL DEFAULT 0,waive_activation INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS deployment_backups(id INTEGER PRIMARY KEY AUTOINCREMENT,filename TEXT NOT NULL,bytes INTEGER NOT NULL DEFAULT 0,sha256 TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     foreach([['lead_followup','Lead follow-up',1,60],['quote_followup','Quote follow-up',1,1440],['appointment_reminder','Appointment reminder',1,1440],['offer_expiry','Offer expiry',1,0]] as $rule){
         db()->prepare("INSERT OR IGNORE INTO automation_rules(rule_key,name,enabled,delay_minutes) VALUES(?,?,?,?)")->execute($rule);
     }
@@ -631,6 +633,33 @@ function global_search_v2(string $q): array {
 }
 function executive_dashboard_v4(): array {
     $x=executive_dashboard_v3();$q=quote_analytics_v2();$pay=commission_payroll_v3();$x['quote_view_rate']=$q['view_rate'];$x['quote_accept_rate']=$q['accept_rate'];$x['quote_value']=$q['value'];$x['payroll_payable']=$pay['totals']['payable'];$x['leads_attention']=(int)scalar("SELECT COUNT(*) FROM leads WHERE stage NOT IN ('activated','lost') AND updated_at<datetime('now','-48 hours')");$x['documents_pending']=(int)scalar("SELECT COUNT(*) FROM documents WHERE status IN ('requested','received')");$x['provider_mix']=rows("SELECT p.name provider,COUNT(*) orders,SUM(o.commission_amount) commission FROM orders o JOIN providers p ON p.id=o.provider_id GROUP BY p.id ORDER BY orders DESC");return $x;
+}
+
+
+function bundle_price_v3(array $dealIds): array {
+    $base=quote_calculate($dealIds);$discount=0.0;$bonus=0.0;$waived=0.0;$applied=[];$byProvider=[];
+    foreach($base['items'] as $d){$byProvider[(int)$d['provider_id']][]=strtolower((string)$d['category']);}
+    foreach(rows("SELECT br.*,p.name provider FROM bundle_rules br LEFT JOIN providers p ON p.id=br.provider_id WHERE br.active=1 ORDER BY br.id") as $r){
+        $required=array_values(array_filter(array_map('strtolower',json_decode($r['required_categories']?:'[]',true)?:[])));$providers=$r['provider_id']?[(int)$r['provider_id']=>($byProvider[(int)$r['provider_id']]??[])]:$byProvider;
+        foreach($providers as $cats){if($required && count(array_diff($required,$cats))===0){$discount+=(float)$r['discount_monthly'];$bonus+=(float)$r['bonus_credit'];if((int)$r['waive_activation']){$waived=$base['fees'];}$applied[]=$r['name'];break;}}
+    }
+    $base['bundle_discount']=$discount;$base['bundle_credit']=$bonus;$base['waived_fees']=$waived;$base['final_monthly']=max(0,$base['monthly']-$discount);$base['final_credits']=$base['credits']+$bonus;$base['final_fees']=max(0,$base['fees']-$waived);$base['applied_rules']=$applied;return $base;
+}
+function operations_centre(): array {
+    return rows("SELECT o.*,u.name customer,p.name provider,d.name deal,(SELECT COUNT(*) FROM documents x WHERE x.order_id=o.id AND x.status NOT IN ('approved')) missing_docs FROM orders o JOIN users u ON u.id=o.user_id JOIN providers p ON p.id=o.provider_id JOIN deals d ON d.id=o.deal_id WHERE o.status NOT IN ('completed','cancelled','rejected') ORDER BY CASE o.status WHEN 'submitted' THEN 0 WHEN 'reviewing' THEN 1 WHEN 'need_information' THEN 2 WHEN 'ready_to_process' THEN 3 WHEN 'submitted_to_provider' THEN 4 WHEN 'appointment_confirmed' THEN 5 WHEN 'activated' THEN 6 ELSE 7 END,o.created_at");
+}
+function smart_action_queue(?string $salesAgent=null): array {
+    $out=[];$agentSql=$salesAgent!==null?" AND sales_agent=?":"";$params=$salesAgent!==null?[$salesAgent]:[];
+    foreach(rows("SELECT * FROM leads WHERE stage NOT IN ('activated','lost') AND updated_at<datetime('now','-24 hours')".$agentSql." ORDER BY lead_score DESC LIMIT 30",$params) as $l)$out[]=['priority'=>$l['lead_score']>=75?'urgent':'high','type'=>'Lead','title'=>'Follow up '.$l['name'],'reason'=>'No lead activity in 24+ hours','url'=>'?page=admin&view=leads&edit='.$l['id']];
+    foreach(rows("SELECT * FROM quotes WHERE viewed_at IS NOT NULL AND accepted_at IS NULL AND status IN ('sent','viewed') AND viewed_at<datetime('now','-6 hours') ORDER BY viewed_at LIMIT 20") as $q)$out[]=['priority'=>'high','type'=>'Quote','title'=>'Follow up '.$q['customer_name'],'reason'=>'Quote viewed but not accepted','url'=>'?page=admin&view=quotes'];
+    foreach(rows("SELECT o.*,u.name customer FROM orders o JOIN users u ON u.id=o.user_id WHERE o.status='submitted_to_provider' AND (o.provider_reference IS NULL OR o.provider_reference='') AND o.updated_at<datetime('now','-12 hours') ORDER BY o.updated_at LIMIT 20") as $o)$out[]=['priority'=>'urgent','type'=>'Order','title'=>'Provider reference missing · '.$o['customer'],'reason'=>$o['public_id'].' submitted 12+ hours ago','url'=>'?page=admin&view=operations'];
+    return array_slice($out,0,60);
+}
+function salesperson_performance(): array {
+    return rows("SELECT COALESCE(NULLIF(o.sales_agent,''),'Unassigned') sales_agent,COUNT(o.id) orders,SUM(CASE WHEN o.status IN ('activated','completed') THEN 1 ELSE 0 END) activations,ROUND(100.0*SUM(CASE WHEN o.status IN ('activated','completed') THEN 1 ELSE 0 END)/MAX(COUNT(o.id),1),1) conversion,COALESCE(SUM(o.commission_amount),0) commission,COALESCE(AVG(CASE WHEN o.first_contact_at IS NOT NULL THEN (julianday(o.first_contact_at)-julianday(o.created_at))*1440 END),0) avg_response_minutes FROM orders o GROUP BY COALESCE(NULLIF(o.sales_agent,''),'Unassigned') ORDER BY activations DESC,commission DESC");
+}
+function security_health(): array {
+    $path=database_path();return ['db_exists'=>is_file($path),'db_writable'=>is_file($path)&&is_writable($path),'app_key'=>(strlen((string)envv('APP_KEY',''))===64),'debug'=>envv('APP_DEBUG','false')==='true','https'=>(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')||($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https','backups'=>(int)scalar("SELECT COUNT(*) FROM deployment_backups"),'failed_notifications'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'")];
 }
 
 function platform_schema_version(): string {
