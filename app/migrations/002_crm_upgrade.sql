@@ -1,0 +1,9 @@
+-- Run once on an existing installation before deploying the CRM upgrade.
+ALTER TABLE orders ADD COLUMN campaign_id INTEGER REFERENCES campaigns(id);
+ALTER TABLE orders ADD COLUMN lead_id INTEGER REFERENCES leads(id);
+ALTER TABLE orders ADD COLUMN lost_reason TEXT;
+ALTER TABLE orders ADD COLUMN first_contact_at TEXT;
+CREATE TABLE IF NOT EXISTS campaigns(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,code TEXT NOT NULL UNIQUE,source_id INTEGER REFERENCES sale_sources(id),status TEXT NOT NULL DEFAULT 'active',destination TEXT NOT NULL DEFAULT '/?page=register',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS leads(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,email TEXT,phone TEXT,stage TEXT NOT NULL DEFAULT 'lead',provider_id INTEGER REFERENCES providers(id),deal_id INTEGER REFERENCES deals(id),source_id INTEGER REFERENCES sale_sources(id),campaign_id INTEGER REFERENCES campaigns(id),referred_by TEXT,sales_agent TEXT,next_follow_up_at TEXT,lost_reason TEXT,notes TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,description TEXT,entity_type TEXT NOT NULL,entity_id INTEGER NOT NULL,assigned_to INTEGER REFERENCES users(id),status TEXT NOT NULL DEFAULT 'open',priority TEXT NOT NULL DEFAULT 'normal',due_at TEXT,created_by INTEGER REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,completed_at TEXT);
+CREATE TABLE IF NOT EXISTS communications(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER REFERENCES users(id),lead_id INTEGER REFERENCES leads(id),order_id INTEGER REFERENCES orders(id),kind TEXT NOT NULL,visibility TEXT NOT NULL DEFAULT 'internal',subject TEXT,message TEXT NOT NULL,delivery_status TEXT NOT NULL DEFAULT 'logged',created_by INTEGER REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
