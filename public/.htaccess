@@ -1,10 +1,18 @@
 Options -Indexes
 RewriteEngine On
 
-# Friendly installer route. Works at domain root or inside a subdirectory.
-RewriteRule ^install/?$ index.php?page=install [L,QSA]
+# Protect dotfiles and sensitive application artifacts if this directory is exposed.
+RewriteRule "(^|/)\." - [F,L]
+RewriteRule "\.(?:sqlite|db|log|ini|env|sql)$" - [F,L,NC]
 
-# Send application routes that are not real files/directories to the front controller.
+RewriteRule ^install/?$ index.php?page=install [L,QSA]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [L,QSA]
+
+<IfModule mod_headers.c>
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
