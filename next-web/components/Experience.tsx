@@ -51,6 +51,7 @@ const steps = [
 export default function Experience() {
   const root = useRef<HTMLDivElement>(null);
   const [activeCategory, setActiveCategory] = useState("internet");
+  const [cursor, setCursor] = useState({ x: 50, y: 35 });
 
   useEffect(() => {
     gsap.registerPlugin(ScrollTrigger);
@@ -133,7 +134,9 @@ export default function Experience() {
   }, []);
 
   return (
-    <div ref={root} className="site-shell">
+    <div ref={root} className="site-shell" onPointerMove={(e) => setCursor({x:(e.clientX/window.innerWidth)*100,y:(e.clientY/window.innerHeight)*100})} style={{"--mx": cursor.x+"%","--my":cursor.y+"%"} as React.CSSProperties}>
+      <div className="cursor-aurora" aria-hidden="true" />
+      <div className="signal-marquee" aria-hidden="true"><div>PRIVATE FIBRE • 5G+ • REWARDS • HUMAN SUPPORT • LIVE ORDER TRACKING • PRIVATE FIBRE • 5G+ • REWARDS • HUMAN SUPPORT •</div></div>
       <header className="nav-wrap">
         <nav className="nav-shell" aria-label="Primary">
           <a className="brand" href="#top" aria-label="SecureLink home">
@@ -166,6 +169,7 @@ export default function Experience() {
           <div className="hero-orbit" />
 
           <div className="hero-copy">
+            <div className="hero-index">SL / 26 <span>CANADA</span></div>
             <div className="status-pill">
               <span className="status-dot" />
               PRIVATE TELECOM ACCESS
@@ -208,7 +212,7 @@ export default function Experience() {
           </div>
 
           <div className="scroll-cue">
-            <span>SCROLL TO CONNECT</span>
+            <span>ENTER THE NETWORK</span>
             <i />
           </div>
         </section>
@@ -240,7 +244,7 @@ export default function Experience() {
             ))}
           </div>
 
-          <div className="service-grid">
+          <div className="service-stage"><div className="service-rail"><span>CHOOSE A SIGNAL</span><b>0${categories.findIndex(c=>c.id===activeCategory)+1}</b></div><div className="service-grid">
             {categories.map((category, index) => (
               <article
                 className={
@@ -267,7 +271,7 @@ export default function Experience() {
                 </div>
               </article>
             ))}
-          </div>
+          </div></div>
         </section>
 
         <section className="section experience" id="experience">
