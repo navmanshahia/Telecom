@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-require __DIR__.'/bootstrap.php';
+require_once __DIR__.'/bootstrap.php';
 function installed(): bool {
     try { return (bool)db()->query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")->fetchColumn(); } catch(Throwable $e){ return false; }
 }
