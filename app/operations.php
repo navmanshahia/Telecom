@@ -171,14 +171,14 @@ function restore_deal_history(int $historyId,int $actor): int {
     record_deal_history($dealId,$actor,'restore');
     return $dealId;
 }
-function queue_notification(?int $userId,?int $orderId,?int $leadId,string $subject,string $message,int $actor=0,string $channel='email',?string $recipient=null,?string $scheduledAt=null): int {
+function queue_notification(?int $userId,?int $orderId,?int $leadId,string $subject,string $message,int $actor=0,string $channel='email',?string $recipient=null,?string $scheduledAt=null,string $type='transactional'): int {
     if($recipient===null && $userId){
         $recipient=(string)(scalar("SELECT email FROM users WHERE id=?",[$userId])?:'');
     }
     $scheduledAt=$scheduledAt?:date('Y-m-d H:i:s');
-    $s=db()->prepare("INSERT INTO notification_queue(user_id,order_id,lead_id,channel,recipient,subject,message,status,scheduled_at,created_by)
-                      VALUES(?,?,?,?,?,?,?,'queued',?,?)");
-    $s->execute([$userId,$orderId,$leadId,$channel,$recipient,$subject,$message,$scheduledAt,$actor?:null]);
+    $s=db()->prepare("INSERT INTO notification_queue(user_id,order_id,lead_id,channel,notification_type,recipient,subject,message,status,scheduled_at,created_by)
+                      VALUES(?,?,?,?,?,?,?,?,'queued',?,?)");
+    $s->execute([$userId,$orderId,$leadId,$channel,$type,$recipient,$subject,$message,$scheduledAt,$actor?:null]);
     return (int)db()->lastInsertId();
 }
 function queue_order_status_notification(int $orderId,int $actor,string $customMessage=''): void {
@@ -208,6 +208,21 @@ function process_notification_queue(int $limit=25): array {
     $transport=strtolower((string)envv('MAIL_TRANSPORT','log'));
     $items=rows("SELECT * FROM notification_queue WHERE status='queued' AND scheduled_at<=datetime('now') ORDER BY scheduled_at,id LIMIT ".$limit);
     foreach($items as $n){
+        $type=(string)($n['notification_type']??'transactional');
+        if($type==='order_followup' && !empty($n['order_id'])){
+            $orderStatus=(string)(scalar("SELECT status FROM orders WHERE id=?",[(int)$n['order_id']])?:'');
+            if(!in_array($orderStatus,['submitted','reviewing','need_information'],true)){
+                db()->prepare("UPDATE notification_queue SET status='cancelled',last_error='Order progressed before scheduled follow-up' WHERE id=?")->execute([(int)$n['id']]);
+                continue;
+            }
+        }
+        if($type==='lead_followup' && !empty($n['lead_id'])){
+            $leadStage=(string)(scalar("SELECT stage FROM leads WHERE id=?",[(int)$n['lead_id']])?:'');
+            if(in_array($leadStage,['activated','lost','order'],true)){
+                db()->prepare("UPDATE notification_queue SET status='cancelled',last_error='Lead progressed before scheduled follow-up' WHERE id=?")->execute([(int)$n['id']]);
+                continue;
+            }
+        }
         if($transport!=='mail'){ $skipped++; continue; }
         $recipient=trim((string)$n['recipient']);
         if($recipient===''||!filter_var($recipient,FILTER_VALIDATE_EMAIL)){
@@ -314,6 +329,7 @@ function ensure_platform_schema(): void {
     $addColumn('orders','first_contact_at','TEXT');
     $addColumn('orders','commission_amount','REAL NOT NULL DEFAULT 0');
     $addColumn('orders','commission_status',"TEXT NOT NULL DEFAULT 'pending'");
+    $addColumn('notification_queue','notification_type',"TEXT NOT NULL DEFAULT 'transactional'");
 
     db()->exec("CREATE TABLE IF NOT EXISTS referral_programs(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
