@@ -1,4 +1,4 @@
-const CACHE_NAME="securelink-static-v4";
+const CACHE_NAME="securelink-static-v6";
 const STATIC_ASSETS=[
   "./offline.html",
   "./assets/app.css",
