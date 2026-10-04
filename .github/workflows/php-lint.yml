@@ -22,6 +22,10 @@ jobs:
           extensions: pdo_sqlite, sodium
       - name: Lint PHP
         run: find . -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Runtime schema smoke test
+        run: |
+          mkdir -p storage
+          APP_KEY=$(php -r 'echo bin2hex(random_bytes(32));') DB_PATH=storage/ci.sqlite php -r 'require "app/operations.php"; ensure_platform_schema(); echo "schema ok\\n";'
       - name: Validate PWA manifest
         run: php -r '$j=json_decode(file_get_contents("public/manifest.webmanifest"),true); if(!is_array($j)){fwrite(STDERR,json_last_error_msg().PHP_EOL); exit(1);} echo "manifest ok".PHP_EOL;'
       - name: Check JavaScript syntax
