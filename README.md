@@ -29,3 +29,10 @@ Do not commit real customer data, uploaded identity documents, production SQLite
 
 ## Privacy
 Government identifiers are sensitive. Only collect identifier types that your authorized provider workflow and applicable law permit. SIN and health-card handling should receive separate privacy/legal review before production use.
+
+
+## CRM Operations Upgrade
+The admin now includes a sales command centre, Lead → Interested → Follow-up → Application → Order → Activated pipeline, lost-sale reasons, SLA queue, internal tasks, internal/customer updates, communications log, referral payout queue, campaign tracking URLs for QR use, global search, funnel/source analytics and safe CSV exports.
+
+### Existing installations
+Back up the database, then run `app/migrations/002_crm_upgrade.sql` once before using the new CRM screens. Test the migration on a copy first. Email records are queued/logged in the communications table; connect a transactional mail provider/SMTP worker before expecting external delivery.
