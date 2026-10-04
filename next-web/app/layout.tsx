@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SecureLink | Private Telecom Access",
+  title: "SecureLink | Compare TELUS & Rogers Offers",
   description:
-    "A premium private telecom experience for internet, mobility, TV, security, referrals and order tracking.",
+    "Compare TELUS and Rogers internet, mobility and bundle offers in a SecureLink side-by-side experience.",
 };
 
 export default function RootLayout({
