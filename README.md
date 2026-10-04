@@ -68,3 +68,41 @@ Registration now creates an email-verification token and password recovery uses 
 - Salesperson and commission amount/status tracking
 - Provider conversion, projected activated MRR and commission pipeline analytics
 - System health view with schema version, database size, queued email and verification counts
+
+
+## Growth & operations V2
+
+The main branch now also includes:
+
+- Command Centre V2 with 7-day order pulse, provider conversion scoreboard, action queue, commissions, SLA risk, follow-ups, notification load and offer-expiry risk
+- Customer-facing deal search, provider filtering, price/reward/term filters and sorting
+- Provider-specific TELUS purple/green and Rogers red brand systems while keeping SecureLink clearly independent
+- Offer version history with restore support and audit attribution
+- Queued customer notifications for order changes, account verification and password recovery
+- Smart 24-hour order/lead follow-ups that automatically cancel when the underlying order/lead has progressed
+- Admin notification centre with scheduling, cancellation, retry and queue processing
+- PWA manifest, install experience, static-only service worker and privacy-safe offline fallback
+- Help-me-choose conversion form, trust disclosures and FAQ content
+- Deployment preflight, normalized line endings, expanded CI and cPanel live-checkout safeguards
+
+### Notification worker
+
+The safe default is:
+
+`MAIL_TRANSPORT=log`
+
+After outbound cPanel mail is configured and verified, set:
+
+`MAIL_TRANSPORT=mail`
+
+Then schedule:
+
+```bash
+cd "$HOME/public_html/Telecom" && php app/notify.php 50
+```
+
+The worker processes due messages, skips delivery when mail transport is disabled, and cancels stale scheduled follow-ups when the related order or lead has already progressed.
+
+### Deployment reliability
+
+The current cPanel repository is itself the live checkout. The deployment file deliberately does not copy the repository into itself. Use `php scripts/preflight.php` for a production readiness check and see `DEPLOYMENT.md` for the clean-reset workflow and the future atomic-deployment path.
