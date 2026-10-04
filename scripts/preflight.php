@@ -26,8 +26,8 @@ $storage=$root.'/storage';
 if(!is_dir($storage) && !@mkdir($storage,0770,true))$errors[]='storage/ could not be created.';
 if(is_dir($storage) && !is_writable($storage))$errors[]='storage/ is not writable.';
 foreach([$root.'/app',$root.'/storage',$root.'/scripts'] as $protected){if(str_starts_with(realpath($protected)?:'',realpath($root.'/public')?:$root.'/public'))$errors[]='Protected directory is inside public/: '.$protected;}
-foreach(glob($root.'/app/*.php')?:[] as $php){$out=[];$code=0;exec(PHP_BINARY.' -l '.escapeshellarg($php).' 2>&1',$out,$code);if($code!==0)$errors[]='PHP lint failed: '.basename($php).' · '.implode(' ',$out);}
-foreach(glob($root.'/public/*.php')?:[] as $php){$out=[];$code=0;exec(PHP_BINARY.' -l '.escapeshellarg($php).' 2>&1',$out,$code);if($code!==0)$errors[]='PHP lint failed: public/'.basename($php).' · '.implode(' ',$out);}
+$canExec=function_exists('exec') && !in_array('exec',array_map('trim',explode(',',(string)ini_get('disable_functions'))),true);
+if($canExec){foreach(glob($root.'/app/*.php')?:[] as $php){$out=[];$code=0;exec(PHP_BINARY.' -l '.escapeshellarg($php).' 2>&1',$out,$code);if($code!==0)$errors[]='PHP lint failed: '.basename($php).' · '.implode(' ',$out);}foreach(glob($root.'/public/*.php')?:[] as $php){$out=[];$code=0;exec(PHP_BINARY.' -l '.escapeshellarg($php).' 2>&1',$out,$code);if($code!==0)$errors[]='PHP lint failed: public/'.basename($php).' · '.implode(' ',$out);}}else{$warnings[]='exec() is disabled; PHP lint is skipped here. Run CI or php -l before deployment.';}
 
 $env=$root.'/.env';
 if(!is_file($env)){
