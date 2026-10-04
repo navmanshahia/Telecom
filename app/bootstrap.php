@@ -46,11 +46,15 @@ if((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_
     header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 }
 
+function database_path(): string {
+    $path = (string)envv('DB_PATH','storage/app.sqlite');
+    if (!str_starts_with($path,'/')) $path = base_path($path);
+    return $path;
+}
 function db(): PDO {
     static $pdo;
     if ($pdo) return $pdo;
-    $path = envv('DB_PATH','storage/app.sqlite');
-    if (!str_starts_with($path,'/')) $path = base_path($path);
+    $path = database_path();
     $dir=dirname($path); if(!is_dir($dir)) mkdir($dir,0770,true);
     $pdo=new PDO('sqlite:'.$path,null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;');
