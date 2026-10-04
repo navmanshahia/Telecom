@@ -11,6 +11,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     // Seed the current provider catalogue for fresh installs.
     $offers=__DIR__.'/migrations/003_provider_offers_2026_10.sql';
     if(is_file($offers)) db()->exec(file_get_contents($offers));
+    $complete=__DIR__.'/migrations/004_complete_telus_catalog.sql';
+    if(is_file($complete)) db()->exec(file_get_contents($complete));
     $name=trim($_POST['name']??''); $email=strtolower(trim($_POST['email']??'')); $password=$_POST['password']??'';
     if(!$name || !filter_var($email,FILTER_VALIDATE_EMAIL) || strlen($password)<12) exit('Use a valid name/email and a password of at least 12 characters.');
     $s=db()->prepare("INSERT INTO users(name,email,password_hash,role,status,approved_at) VALUES(?,?,?,'owner','approved',datetime('now'))");
