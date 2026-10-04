@@ -20,10 +20,14 @@ foreach($required as $file){
 
 if(!extension_loaded('pdo_sqlite'))$errors[]='PHP extension pdo_sqlite is required.';
 if(!extension_loaded('sodium'))$errors[]='PHP extension sodium is required.';
+if(PHP_VERSION_ID<80200)$warnings[]='PHP 8.2+ is recommended for production.';
 
 $storage=$root.'/storage';
 if(!is_dir($storage) && !@mkdir($storage,0770,true))$errors[]='storage/ could not be created.';
 if(is_dir($storage) && !is_writable($storage))$errors[]='storage/ is not writable.';
+foreach([$root.'/app',$root.'/storage',$root.'/scripts'] as $protected){if(str_starts_with(realpath($protected)?:'',realpath($root.'/public')?:$root.'/public'))$errors[]='Protected directory is inside public/: '.$protected;}
+foreach(glob($root.'/app/*.php')?:[] as $php){$out=[];$code=0;exec(PHP_BINARY.' -l '.escapeshellarg($php).' 2>&1',$out,$code);if($code!==0)$errors[]='PHP lint failed: '.basename($php).' · '.implode(' ',$out);}
+foreach(glob($root.'/public/*.php')?:[] as $php){$out=[];$code=0;exec(PHP_BINARY.' -l '.escapeshellarg($php).' 2>&1',$out,$code);if($code!==0)$errors[]='PHP lint failed: public/'.basename($php).' · '.implode(' ',$out);}
 
 $env=$root.'/.env';
 if(!is_file($env)){
