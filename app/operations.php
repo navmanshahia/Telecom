@@ -142,7 +142,7 @@ function ensure_platform_schema(): void {
     )");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id,used_at)");
 
-    $version='006_sales_platform_hardening';
+    $version='007_sales_platform_hardening';
     $s=db()->prepare("SELECT 1 FROM schema_migrations WHERE version=?");
     $s->execute([$version]);
     if(!$s->fetchColumn()){
