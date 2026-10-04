@@ -26,6 +26,8 @@ function url(string $path=''): string {
     return ($base !== '' ? $base : '').'/'.ltrim($path,'/');
 }
 
+ini_set('session.use_strict_mode','1');
+ini_set('session.use_only_cookies','1');
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_set_cookie_params([
         'httponly'=>true,'secure'=>envv('SESSION_SECURE','true')==='true',
@@ -37,6 +39,12 @@ header('X-Frame-Options: DENY');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+header("Cross-Origin-Opener-Policy: same-origin");
+header("Cross-Origin-Resource-Policy: same-origin");
+header("Content-Security-Policy: default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'");
+if((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https')){
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
 
 function db(): PDO {
     static $pdo;
@@ -74,4 +82,38 @@ function encrypt_secret(?string $value): ?string {
 function mask_secret(?string $encrypted): string {
     if(!$encrypted) return 'Not provided';
     try { $raw=base64_decode($encrypted,true); $n=substr($raw,0,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES); $c=substr($raw,SODIUM_CRYPTO_SECRETBOX_NONCEBYTES); $v=sodium_crypto_secretbox_open($c,$n,secret_key()); return $v===false?'Protected':'•••• '.substr($v,-4); } catch(Throwable $e){ return 'Protected'; }
+}
+
+
+function rate_limit(string $scope,int $limit,int $windowSeconds): void {
+    $limit=max(1,$limit);$windowSeconds=max(60,$windowSeconds);
+    db()->exec("CREATE TABLE IF NOT EXISTS rate_limits(
+        scope TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        hits INTEGER NOT NULL DEFAULT 0,
+        window_started INTEGER NOT NULL,
+        PRIMARY KEY(scope,key_hash)
+    )");
+    $fingerprint=hash('sha256',($_SERVER['REMOTE_ADDR']??'unknown').'|'.substr($_SERVER['HTTP_USER_AGENT']??'',0,180));
+    $now=time();
+    $s=db()->prepare("SELECT hits,window_started FROM rate_limits WHERE scope=? AND key_hash=?");
+    $s->execute([$scope,$fingerprint]);$row=$s->fetch();
+    if(!$row || $now-(int)$row['window_started'] >= $windowSeconds){
+        db()->prepare("INSERT INTO rate_limits(scope,key_hash,hits,window_started) VALUES(?,?,1,?)
+            ON CONFLICT(scope,key_hash) DO UPDATE SET hits=1,window_started=excluded.window_started")
+            ->execute([$scope,$fingerprint,$now]);
+        return;
+    }
+    if((int)$row['hits'] >= $limit){
+        http_response_code(429);
+        header('Retry-After: '.max(1,$windowSeconds-($now-(int)$row['window_started'])));
+        exit('Too many attempts. Please wait and try again.');
+    }
+    db()->prepare("UPDATE rate_limits SET hits=hits+1 WHERE scope=? AND key_hash=?")->execute([$scope,$fingerprint]);
+}
+function rate_limit_clear(string $scope): void {
+    try{
+        $fingerprint=hash('sha256',($_SERVER['REMOTE_ADDR']??'unknown').'|'.substr($_SERVER['HTTP_USER_AGENT']??'',0,180));
+        db()->prepare("DELETE FROM rate_limits WHERE scope=? AND key_hash=?")->execute([$scope,$fingerprint]);
+    }catch(Throwable $e){}
 }
