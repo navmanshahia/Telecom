@@ -1,7 +1,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/elitdtsa/public_html/Telecom/
+    - export DEPLOYPATH=/home/elitdtsa/public_html/Telecomnxt/
     - /bin/mkdir -p $DEPLOYPATH
     - /bin/cp -R app $DEPLOYPATH
     - /bin/cp -R public $DEPLOYPATH
