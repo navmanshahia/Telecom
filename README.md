@@ -21,7 +21,7 @@ PHP 8.2+, PDO SQLite, Sodium, HTTPS.
 1. Point the web root/document root at `public/`.
 2. Copy `.env.example` to `.env` outside the public web root and set a strong `APP_KEY`.
 3. Ensure the PHP process can write to `storage/`.
-4. Visit `/install` once and create the owner account.
+4. Visit the app's `/install` route once and create the owner account (for example, if deployed at `/Telecom-main/public/`, open `/Telecom-main/public/install`).
 5. Delete/disable the installer after setup.
 6. Keep HTTPS enabled in production.
 
