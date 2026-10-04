@@ -52,6 +52,7 @@ function ensure_merchandising_schema(): void {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )");
 }
+function deal_customer_credit(array $deal): float { return max(0,(float)($deal['bill_credit']??0)); }
 function deal_rewards(array $deal): float {
     return (float)($deal['bill_credit']??0)+(float)($deal['referral_reward']??0)+(float)($deal['other_reward']??0);
 }
@@ -545,7 +546,7 @@ function quote_calculate(array $dealIds): array {
     foreach(array_unique(array_map('intval',$dealIds)) as $id){
         $d=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.id=? LIMIT 1",[$id])[0]??null;
         if(!$d) continue;
-        $items[]=$d;$monthly+=(float)$d['monthly_price'];$regular+=(float)($d['regular_price']?:$d['monthly_price']);$credits+=deal_rewards($d);$fees+=deal_one_time_fees($d);$term=max($term,deal_term($d));
+        $items[]=$d;$monthly+=(float)$d['monthly_price'];$regular+=(float)($d['regular_price']?:$d['monthly_price']);$credits+=deal_customer_credit($d);$fees+=deal_one_time_fees($d);$term=max($term,deal_term($d));
     }
     return compact('items','monthly','regular','credits','fees','term');
 }
@@ -586,6 +587,10 @@ function lead_score(array $lead): int {
 function refresh_lead_scores(): void { foreach(rows("SELECT * FROM leads") as $l)db()->prepare("UPDATE leads SET lead_score=? WHERE id=?")->execute([lead_score($l),(int)$l['id']]); }
 function commission_rule_amount(int $providerId,string $category): float {
     $v=scalar("SELECT amount FROM commission_rules WHERE active=1 AND provider_id=? AND (lower(category)=lower(?) OR category IS NULL OR category='') ORDER BY CASE WHEN lower(category)=lower(?) THEN 0 ELSE 1 END,id DESC LIMIT 1",[$providerId,$category,$category]);return (float)($v?:0);
+}
+function commission_for_order_v2(int $orderId): float {
+    $o=rows("SELECT provider_id,category,commission_amount FROM orders WHERE id=? LIMIT 1",[$orderId])[0]??null;if(!$o)return 0.0;
+    $rule=commission_rule_amount((int)$o['provider_id'],(string)$o['category']);return $rule>0?$rule:(float)$o['commission_amount'];
 }
 function commission_summary_v2(): array {
     return ['pending'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='pending'"),'approved'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='approved'"),'paid'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'"),'chargebacks'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='void'")];
