@@ -41,3 +41,55 @@ function funnel(): array {
   'Activated'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('activated','completed')")
  ];
 }
+
+
+function ensure_merchandising_schema(): void {
+    db()->exec("CREATE TABLE IF NOT EXISTS deal_merchandising(
+        deal_id INTEGER PRIMARY KEY REFERENCES deals(id) ON DELETE CASCADE,
+        featured INTEGER NOT NULL DEFAULT 0,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )");
+}
+function deal_rewards(array $deal): float {
+    return (float)($deal['bill_credit']??0)+(float)($deal['referral_reward']??0)+(float)($deal['other_reward']??0);
+}
+function deal_term(array $deal): int {
+    return max(1,(int)($deal['term_months']??0) ?: 24);
+}
+function deal_effective_monthly(array $deal): float {
+    return max(0,(float)($deal['monthly_price']??0) - (deal_rewards($deal)/deal_term($deal)));
+}
+function deal_term_cost(array $deal): float {
+    $months=deal_term($deal);
+    return max(0,((float)($deal['monthly_price']??0)*$months)-deal_rewards($deal));
+}
+function provider_slug(string $provider): string {
+    $slug=strtolower(trim(preg_replace('/[^A-Za-z0-9]+/','-', $provider),'-'));
+    return $slug!==''?$slug:'provider';
+}
+function active_deals(string $category=''): array {
+    ensure_merchandising_schema();
+    $sql="SELECT d.*,p.name provider,COALESCE(m.featured,0) featured,COALESCE(m.display_order,0) display_order
+          FROM deals d
+          JOIN providers p ON p.id=d.provider_id
+          LEFT JOIN deal_merchandising m ON m.deal_id=d.id
+          WHERE d.status='active' AND p.status='active'
+            AND (d.starts_at IS NULL OR d.starts_at<=datetime('now'))
+            AND (d.expires_at IS NULL OR d.expires_at>=datetime('now'))";
+    $params=[];
+    if($category!==''){ $sql.=" AND lower(d.category)=lower(?)";$params[]=$category; }
+    $sql.=" ORDER BY COALESCE(m.featured,0) DESC,COALESCE(m.display_order,999999),p.display_order,d.id DESC";
+    return rows($sql,$params);
+}
+function featured_deals(int $limit=3): array {
+    ensure_merchandising_schema();
+    $limit=max(1,min(12,$limit));
+    return rows("SELECT d.*,p.name provider,COALESCE(m.featured,0) featured,COALESCE(m.display_order,0) display_order
+        FROM deals d JOIN providers p ON p.id=d.provider_id
+        LEFT JOIN deal_merchandising m ON m.deal_id=d.id
+        WHERE d.status='active' AND p.status='active'
+          AND (d.starts_at IS NULL OR d.starts_at<=datetime('now'))
+          AND (d.expires_at IS NULL OR d.expires_at>=datetime('now'))
+        ORDER BY COALESCE(m.featured,0) DESC,COALESCE(m.display_order,999999),d.id DESC LIMIT ".$limit);
+}
