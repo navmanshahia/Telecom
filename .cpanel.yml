@@ -2,5 +2,8 @@
 deployment:
   tasks:
     - export APPROOT="$HOME/public_html/Telecom"
+    - /bin/test -f "$APPROOT/public/index.php"
+    - /bin/test -f "$APPROOT/app/bootstrap.php"
+    - /bin/test -f "$APPROOT/public/manifest.webmanifest"
     - /bin/mkdir -p "$APPROOT/storage/logs"
     - /bin/chmod 770 "$APPROOT/storage"
