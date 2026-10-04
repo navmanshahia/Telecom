@@ -36,3 +36,24 @@ The admin now includes a sales command centre, Lead → Interested → Follow-up
 
 ### Existing installations
 Back up the database, then run `app/migrations/002_crm_upgrade.sql` once before using the new CRM screens. Test the migration on a copy first. Email records are queued/logged in the communications table; connect a transactional mail provider/SMTP worker before expecting external delivery.
+
+
+## Production experience upgrade
+
+The main branch now includes:
+- Side-by-side offer comparison with listed rewards, effective monthly cost and estimated term cost
+- Premium neutral SecureLink storefront with provider-aware TELUS and Rogers presentation
+- Rich deal cards with regular price, current price, term, speed/data, rewards, expiry and fine print
+- Four-step guided application flow with validation, safe progress persistence and review-before-submit
+- Admin deal/pricing editor, featured merchandising, drag ordering, offer-expiry visibility and provider conversion analytics
+- Mobile dock navigation, empty/error states, reduced-motion support, SEO metadata, cache-busted assets and success toasts
+- Hardened security headers, strict sessions and server-side request throttling
+- GitHub Actions PHP 8.2 syntax linting on main
+
+### Existing production databases
+
+The runtime creates the optional merchandising/rate-limit tables safely with `CREATE TABLE IF NOT EXISTS`. For an explicit migration record, run `app/migrations/006_merchandising_and_rate_limits.sql` once against an existing database.
+
+### Email-dependent account features
+
+Password-reset email and email verification should only be enabled after a transactional email provider/SMTP worker is connected. The application does not fake delivery of security-critical email.
