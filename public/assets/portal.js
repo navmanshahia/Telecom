@@ -167,6 +167,45 @@ document.addEventListener("DOMContentLoaded",()=>{
     syncOrder();
   }
 
+  // Progressive Web App: static-only service worker and install experience.
+  if("serviceWorker" in navigator){
+    window.addEventListener("load",()=>navigator.serviceWorker.register("service-worker.js").catch(()=>{}));
+  }
+  let deferredInstallPrompt=null;
+  const installButtons=[...document.querySelectorAll("[data-install-app]")];
+  const installHint=document.querySelector("[data-install-hint]");
+  const isStandalone=window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone===true;
+  const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  if(isStandalone){
+    installButtons.forEach(btn=>btn.hidden=true);
+  }else if(isIOS){
+    installButtons.forEach(btn=>{
+      btn.hidden=false;
+      btn.addEventListener("click",()=>{if(installHint){installHint.hidden=false;installHint.scrollIntoView({behavior:"smooth",block:"nearest"});}});
+    });
+  }else{
+    installButtons.forEach(btn=>btn.hidden=true);
+    window.addEventListener("beforeinstallprompt",e=>{
+      e.preventDefault();deferredInstallPrompt=e;
+      installButtons.forEach(btn=>btn.hidden=false);
+    });
+    installButtons.forEach(btn=>btn.addEventListener("click",async()=>{
+      if(!deferredInstallPrompt)return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice.catch(()=>null);
+      deferredInstallPrompt=null;
+      installButtons.forEach(b=>b.hidden=true);
+    }));
+    window.addEventListener("appinstalled",()=>installButtons.forEach(btn=>btn.hidden=true));
+  }
+
+  const networkToast=message=>{
+    const el=document.createElement("div");el.className="toast network-toast";el.setAttribute("role","status");el.textContent=message;
+    document.body.appendChild(el);setTimeout(()=>el.remove(),2600);
+  };
+  window.addEventListener("offline",()=>networkToast("You’re offline. SecureLink will reconnect when your network returns."));
+  window.addEventListener("online",()=>networkToast("Back online."));
+
   document.querySelectorAll(".compare-picker select").forEach(select=>{
     select.addEventListener("change",()=>select.form?.requestSubmit());
   });
