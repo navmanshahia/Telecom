@@ -8,6 +8,9 @@ if(installed() && (int)db()->query("SELECT COUNT(*) FROM users WHERE role='owner
 if($_SERVER['REQUEST_METHOD']==='POST'){
     csrf_check();
     db()->exec(file_get_contents(__DIR__.'/schema.sql'));
+    // Seed the current provider catalogue for fresh installs.
+    $offers=__DIR__.'/migrations/003_provider_offers_2026_10.sql';
+    if(is_file($offers)) db()->exec(file_get_contents($offers));
     $name=trim($_POST['name']??''); $email=strtolower(trim($_POST['email']??'')); $password=$_POST['password']??'';
     if(!$name || !filter_var($email,FILTER_VALIDATE_EMAIL) || strlen($password)<12) exit('Use a valid name/email and a password of at least 12 characters.');
     $s=db()->prepare("INSERT INTO users(name,email,password_hash,role,status,approved_at) VALUES(?,?,?,'owner','approved',datetime('now'))");
