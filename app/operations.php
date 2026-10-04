@@ -346,6 +346,8 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,document_type TEXT NOT NULL,label TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'requested',storage_path TEXT,original_name TEXT,expires_at TEXT,reviewed_by INTEGER REFERENCES users(id),reviewed_at TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id,status,created_at)");
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,display_name TEXT,active INTEGER NOT NULL DEFAULT 1,commission_percent REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id))");
+    db()->exec("CREATE TABLE IF NOT EXISTS bundle_carts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,deal_ids_json TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'active',monthly_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     foreach([['lead_followup','Lead follow-up',1,60],['quote_followup','Quote follow-up',1,1440],['appointment_reminder','Appointment reminder',1,1440],['offer_expiry','Offer expiry',1,0]] as $rule){
         db()->prepare("INSERT OR IGNORE INTO automation_rules(rule_key,name,enabled,delay_minutes) VALUES(?,?,?,?)")->execute($rule);
     }
@@ -594,6 +596,41 @@ function commission_for_order_v2(int $orderId): float {
 }
 function commission_summary_v2(): array {
     return ['pending'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='pending'"),'approved'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='approved'"),'paid'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'"),'chargebacks'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='void'")];
+}
+
+
+function sync_commission_ledger(int $orderId): void {
+    $o=rows("SELECT o.*,cr.salesperson_percent FROM orders o LEFT JOIN commission_rules cr ON cr.id=(SELECT id FROM commission_rules WHERE provider_id=o.provider_id AND active=1 AND (lower(category)=lower(o.category) OR category IS NULL OR category='') ORDER BY CASE WHEN lower(category)=lower(o.category) THEN 0 ELSE 1 END,id DESC LIMIT 1) WHERE o.id=? LIMIT 1",[$orderId])[0]??null;if(!$o)return;
+    $gross=commission_for_order_v2($orderId);$pct=max(0,min(100,(float)($o['salesperson_percent']??0)));$sales=$gross*$pct/100;$company=$gross-$sales;$status=(string)($o['commission_status']??'pending');
+    db()->prepare("INSERT INTO commission_ledger(order_id,sales_agent,provider_id,category,gross_amount,salesperson_amount,company_amount,status,earned_at,paid_at) VALUES(?,?,?,?,?,?,?,?,CASE WHEN ? IN ('activated','completed') THEN datetime('now') END,CASE WHEN ?='paid' THEN datetime('now') END) ON CONFLICT(order_id) DO UPDATE SET sales_agent=excluded.sales_agent,provider_id=excluded.provider_id,category=excluded.category,gross_amount=excluded.gross_amount,salesperson_amount=excluded.salesperson_amount,company_amount=excluded.company_amount,status=excluded.status,earned_at=COALESCE(commission_ledger.earned_at,excluded.earned_at),paid_at=CASE WHEN excluded.status='paid' THEN COALESCE(commission_ledger.paid_at,datetime('now')) ELSE commission_ledger.paid_at END")->execute([$orderId,$o['sales_agent'],$o['provider_id'],$o['category'],$gross,$sales,$company,$status,$o['status'],$status]);
+}
+function commission_payroll_v3(): array {
+    return ['totals'=>['gross'=>(float)scalar("SELECT COALESCE(SUM(gross_amount),0) FROM commission_ledger"),'salesperson'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger"),'company'=>(float)scalar("SELECT COALESCE(SUM(company_amount),0) FROM commission_ledger"),'payable'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status IN ('pending','approved')")],'agents'=>rows("SELECT COALESCE(NULLIF(sales_agent,''),'Unassigned') sales_agent,COUNT(*) orders,SUM(gross_amount) gross,SUM(salesperson_amount) payable,SUM(company_amount) company FROM commission_ledger GROUP BY COALESCE(NULLIF(sales_agent,''),'Unassigned') ORDER BY gross DESC"),'recent'=>rows("SELECT cl.*,o.public_id,p.name provider FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id ORDER BY cl.id DESC LIMIT 100")];
+}
+function lead_intelligence(): array {
+    $rows=rows("SELECT l.*,p.name provider,(SELECT MAX(created_at) FROM communications c WHERE c.lead_id=l.id) last_comm,(SELECT COUNT(*) FROM communications c WHERE c.lead_id=l.id) touches FROM leads l LEFT JOIN providers p ON p.id=l.provider_id WHERE l.stage NOT IN ('activated','lost') ORDER BY l.lead_score DESC,l.updated_at ASC");
+    foreach($rows as &$x){$age=(time()-strtotime($x['last_comm']?:$x['created_at']))/3600;$x['temperature']=$x['lead_score']>=75?'Hot':($x['lead_score']>=50?'Warm':'Cold');$x['risk']=$age>=72?'Needs attention':($age>=24?'Follow up':'Active');$x['probability']=min(95,max(5,(int)round($x['lead_score']*.9)));}unset($x);return $rows;
+}
+function quote_analytics_v2(): array {
+    $sent=(int)scalar("SELECT COUNT(*) FROM quotes");$viewed=(int)scalar("SELECT COUNT(*) FROM quotes WHERE viewed_at IS NOT NULL");$accepted=(int)scalar("SELECT COUNT(*) FROM quotes WHERE accepted_at IS NOT NULL OR status='accepted'");
+    return ['sent'=>$sent,'viewed'=>$viewed,'accepted'=>$accepted,'view_rate'=>$sent?round($viewed*100/$sent,1):0,'accept_rate'=>$sent?round($accepted*100/$sent,1):0,'value'=>(float)scalar("SELECT COALESCE(SUM(monthly_total),0) FROM quotes WHERE status IN ('sent','viewed','accepted')"),'recent'=>rows("SELECT public_id,customer_name,status,monthly_total,credits_total,created_at,viewed_at,accepted_at FROM quotes ORDER BY id DESC LIMIT 50")];
+}
+function bundle_cart_save(int $userId,array $dealIds): array {
+    $calc=quote_calculate($dealIds);$ids=array_map(fn($d)=>(int)$d['id'],$calc['items']);$json=json_encode($ids);
+    $id=(int)(scalar("SELECT id FROM bundle_carts WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1",[$userId])?:0);
+    if($id)db()->prepare("UPDATE bundle_carts SET deal_ids_json=?,monthly_total=?,credits_total=?,updated_at=datetime('now') WHERE id=?")->execute([$json,$calc['monthly'],$calc['credits'],$id]);
+    else{db()->prepare("INSERT INTO bundle_carts(user_id,deal_ids_json,monthly_total,credits_total) VALUES(?,?,?,?)")->execute([$userId,$json,$calc['monthly'],$calc['credits']]);$id=(int)db()->lastInsertId();}
+    return ['id'=>$id,'ids'=>$ids]+$calc;
+}
+function bundle_cart_get(int $userId): array { $x=rows("SELECT * FROM bundle_carts WHERE user_id=? AND status='active' ORDER BY id DESC LIMIT 1",[$userId])[0]??null;if(!$x)return ['ids'=>[],'monthly_total'=>0,'credits_total'=>0];$x['ids']=array_map('intval',json_decode($x['deal_ids_json']?:'[]',true)?:[]);return $x; }
+function customer_360_v2(int $userId): array {
+    $x=customer_360($userId);if(!$x)return [];$x['tasks']=rows("SELECT * FROM tasks WHERE (entity_type='customer' AND entity_id=?) OR (entity_type='order' AND entity_id IN (SELECT id FROM orders WHERE user_id=?)) ORDER BY id DESC LIMIT 30",[$userId,$userId]);$x['referrals']=rows("SELECT r.* FROM referrals r JOIN orders o ON o.id=r.order_id WHERE o.user_id=? ORDER BY r.id DESC",[$userId]);$x['lifetime_value']=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE user_id=?",[$userId]);$x['unread']=(int)scalar("SELECT COUNT(*) FROM customer_notifications WHERE user_id=? AND is_read=0",[$userId]);return $x;
+}
+function global_search_v2(string $q): array {
+    $out=global_command_search($q);$like='%'.trim($q).'%';if(strlen(trim($q))>=2){foreach(rows("SELECT d.id,d.name,p.name provider,d.category FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.name LIKE ? OR p.name LIKE ? OR d.category LIKE ? LIMIT 6",[$like,$like,$like]) as $x)$out[]=['type'=>'Offer','title'=>$x['provider'].' · '.$x['name'],'meta'=>$x['category'],'url'=>'?page=admin&view=deals&edit='.$x['id']];foreach(rows("SELECT id,title,status,priority FROM tasks WHERE title LIKE ? OR description LIKE ? LIMIT 5",[$like,$like]) as $x)$out[]=['type'=>'Task','title'=>$x['title'],'meta'=>$x['priority'].' · '.$x['status'],'url'=>'?page=admin&view=tasks'];}return array_slice($out,0,30);
+}
+function executive_dashboard_v4(): array {
+    $x=executive_dashboard_v3();$q=quote_analytics_v2();$pay=commission_payroll_v3();$x['quote_view_rate']=$q['view_rate'];$x['quote_accept_rate']=$q['accept_rate'];$x['quote_value']=$q['value'];$x['payroll_payable']=$pay['totals']['payable'];$x['leads_attention']=(int)scalar("SELECT COUNT(*) FROM leads WHERE stage NOT IN ('activated','lost') AND updated_at<datetime('now','-48 hours')");$x['documents_pending']=(int)scalar("SELECT COUNT(*) FROM documents WHERE status IN ('requested','received')");$x['provider_mix']=rows("SELECT p.name provider,COUNT(*) orders,SUM(o.commission_amount) commission FROM orders o JOIN providers p ON p.id=o.provider_id GROUP BY p.id ORDER BY orders DESC");return $x;
 }
 
 function platform_schema_version(): string {
