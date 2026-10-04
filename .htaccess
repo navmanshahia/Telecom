@@ -1,0 +1,9 @@
+Options -Indexes
+RewriteEngine On
+
+# The cPanel Git checkout currently lives under public_html. Only public/ is web-facing.
+RewriteRule ^(?:app|storage|scripts|\.git)(?:/|$) - [F,L,NC]
+RewriteRule ^(?:\.env|\.env\..*|\.cpanel\.yml|\.gitattributes|\.gitignore|README\.md|DEPLOYMENT\.md)$ - [F,L,NC]
+
+# Send accidental visits to /Telecom/ to the public application entry point.
+RewriteRule ^$ public/ [R=302,L]
