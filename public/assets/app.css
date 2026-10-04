@@ -1363,3 +1363,8 @@ body{overflow-x:hidden}
   .history-facts{grid-template-columns:1fr}
   .notification-row .row.between{align-items:flex-start}
 }
+
+.deal-admin-side{display:grid;justify-items:end;gap:8px}
+.history-link{font-size:9px;font-weight:850;color:#667085;text-decoration:none}
+.history-link:hover{color:#344054;text-decoration:underline}
+.conversion-kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
