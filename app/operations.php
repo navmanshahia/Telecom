@@ -380,6 +380,10 @@ function ensure_platform_schema(): void {
         db()->exec("UPDATE users SET email_verified_at=COALESCE(email_verified_at,created_at)");
         db()->prepare("INSERT INTO schema_migrations(version) VALUES(?)")->execute([$version]);
     }
+    $version='010_operating_system_v3';
+    $s=db()->prepare("SELECT 1 FROM schema_migrations WHERE version=?");$s->execute([$version]);
+    if(!$s->fetchColumn()) db()->prepare("INSERT INTO schema_migrations(version) VALUES(?)")->execute([$version]);
+
     $version='009_growth_operations';
     $s=db()->prepare("SELECT 1 FROM schema_migrations WHERE version=?");
     $s->execute([$version]);
