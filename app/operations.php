@@ -348,6 +348,12 @@ function ensure_platform_schema(): void {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )");
 
+    $telusId=(int)(scalar("SELECT id FROM providers WHERE lower(name)=lower('TELUS') LIMIT 1")?:0);
+    if($telusId && !(int)scalar("SELECT COUNT(*) FROM referral_programs WHERE provider_id=?",[$telusId])){
+        db()->prepare("INSERT INTO referral_programs(provider_id,name,active,reward_amount,promo_reward_amount,promo_ends_at,retention_days,bonus_5_amount,bonus_10_amount,terms) VALUES(?,?,?,?,?,?,?,?,?,?)")
+          ->execute([$telusId,'TELUS Refer & Earn',1,50,100,'2026-10-31 23:59:59',0,200,250,'Referral reward applies after a successful TELUS activation. Milestone bonuses are based on successful referrals and remain subject to program eligibility.']);
+    }
+
     db()->exec("CREATE TABLE IF NOT EXISTS email_verification_tokens(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -381,6 +387,39 @@ function ensure_platform_schema(): void {
         db()->prepare("INSERT INTO schema_migrations(version) VALUES(?)")->execute([$version]);
     }
 }
+function referral_code_for_user(array $user): string {
+    $id=(int)($user['id']??0);
+    $email=strtolower(trim((string)($user['email']??'')));
+    return 'SL'.str_pad((string)$id,4,'0',STR_PAD_LEFT).'-'.strtoupper(substr(hash('sha256',$id.'|'.$email),0,6));
+}
+function active_referral_program(string $provider='TELUS'): ?array {
+    ensure_platform_schema();
+    $r=rows("SELECT rp.*,p.name provider FROM referral_programs rp JOIN providers p ON p.id=rp.provider_id WHERE rp.active=1 AND lower(p.name)=lower(?) ORDER BY rp.id DESC LIMIT 1",[$provider]);
+    if(!$r) return null;
+    $p=$r[0];
+    $promo=!empty($p['promo_reward_amount']) && !empty($p['promo_ends_at']) && strtotime((string)$p['promo_ends_at'])>=time();
+    $p['current_reward']=$promo?(float)$p['promo_reward_amount']:(float)$p['reward_amount'];
+    $p['promo_active']=$promo;
+    return $p;
+}
+function referral_dashboard(array $user,string $provider='TELUS'): array {
+    $code=referral_code_for_user($user);
+    $items=rows("SELECT r.*,o.public_id,o.status order_status FROM referrals r LEFT JOIN orders o ON o.id=r.order_id WHERE r.referred_by IN (?,?,?) ORDER BY r.id DESC",[$code,(string)($user['email']??''),(string)($user['name']??'')]);
+    $successful=0;$pending=0;$earned=0.0;$paid=0.0;
+    foreach($items as $r){
+        if(in_array($r['status'],['eligible','approved','paid'],true)){$successful++;$earned+=(float)$r['reward_amount'];}
+        elseif($r['status']==='pending'){$pending++;}
+        if($r['status']==='paid')$paid+=(float)$r['reward_amount'];
+    }
+    $program=active_referral_program($provider);
+    $bonus=0.0;
+    if($program){
+        if($successful>=10)$bonus=(float)$program['bonus_10_amount'];
+        elseif($successful>=5)$bonus=(float)$program['bonus_5_amount'];
+    }
+    return ['code'=>$code,'items'=>$items,'successful'=>$successful,'pending'=>$pending,'earned'=>$earned,'paid'=>$paid,'milestone_bonus'=>$bonus,'program'=>$program];
+}
+
 function platform_schema_version(): string {
     if(!db_table_exists('schema_migrations')) return 'legacy';
     return (string)(scalar("SELECT version FROM schema_migrations ORDER BY applied_at DESC,version DESC LIMIT 1") ?: 'baseline');
