@@ -332,6 +332,17 @@ function ensure_platform_schema(): void {
     $addColumn('orders','commission_amount','REAL NOT NULL DEFAULT 0');
     $addColumn('orders','commission_status',"TEXT NOT NULL DEFAULT 'pending'");
     $addColumn('notification_queue','notification_type',"TEXT NOT NULL DEFAULT 'transactional'");
+    $addColumn('leads','lead_score','INTEGER NOT NULL DEFAULT 50');
+    $addColumn('leads','last_contact_at','TEXT');
+    $addColumn('leads','estimated_value','REAL NOT NULL DEFAULT 0');
+    db()->exec("CREATE TABLE IF NOT EXISTS quotes(id INTEGER PRIMARY KEY AUTOINCREMENT,public_id TEXT NOT NULL UNIQUE,user_id INTEGER REFERENCES users(id),lead_id INTEGER REFERENCES leads(id),customer_name TEXT NOT NULL,customer_email TEXT,customer_phone TEXT,status TEXT NOT NULL DEFAULT 'draft',deal_ids_json TEXT NOT NULL DEFAULT '[]',monthly_total REAL NOT NULL DEFAULT 0,regular_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,fees_total REAL NOT NULL DEFAULT 0,term_months INTEGER NOT NULL DEFAULT 24,notes TEXT,expires_at TEXT,viewed_at TEXT,accepted_at TEXT,created_by INTEGER REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS automation_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,rule_key TEXT NOT NULL UNIQUE,name TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,delay_minutes INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS commission_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER NOT NULL REFERENCES providers(id),category TEXT,amount REAL NOT NULL DEFAULT 0,salesperson_percent REAL NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status,created_at)");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_commission_rules_provider ON commission_rules(provider_id,active)");
+    foreach([['lead_followup','Lead follow-up',1,60],['quote_followup','Quote follow-up',1,1440],['appointment_reminder','Appointment reminder',1,1440],['offer_expiry','Offer expiry',1,0]] as $rule){
+        db()->prepare("INSERT OR IGNORE INTO automation_rules(rule_key,name,enabled,delay_minutes) VALUES(?,?,?,?)")->execute($rule);
+    }
 
     db()->exec("CREATE TABLE IF NOT EXISTS referral_programs(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -494,6 +505,58 @@ function customer_dashboard_data(array $u): array {
     $orders=rows("SELECT o.*,d.name deal,p.name provider FROM orders o JOIN deals d ON d.id=o.deal_id JOIN providers p ON p.id=o.provider_id WHERE o.user_id=? ORDER BY o.id DESC LIMIT 5",[(int)$u['id']]);
     $ref=referral_dashboard($u,'TELUS');
     return ['orders'=>$orders,'referrals'=>$ref,'featured'=>featured_deals(3)];
+}
+
+
+function quote_calculate(array $dealIds): array {
+    $items=[];$monthly=0.0;$regular=0.0;$credits=0.0;$fees=0.0;$term=24;
+    foreach(array_unique(array_map('intval',$dealIds)) as $id){
+        $d=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.id=? LIMIT 1",[$id])[0]??null;
+        if(!$d) continue;
+        $items[]=$d;$monthly+=(float)$d['monthly_price'];$regular+=(float)($d['regular_price']?:$d['monthly_price']);$credits+=deal_rewards($d);$fees+=deal_one_time_fees($d);$term=max($term,deal_term($d));
+    }
+    return compact('items','monthly','regular','credits','fees','term');
+}
+function quote_create(array $input,int $actor): string {
+    $calc=quote_calculate($input['deal_ids']??[]);if(!$calc['items']) throw new RuntimeException('Select at least one offer.');
+    $public='Q-'.date('ymd').'-'.strtoupper(bin2hex(random_bytes(3)));$ids=array_map(fn($d)=>(int)$d['id'],$calc['items']);
+    db()->prepare("INSERT INTO quotes(public_id,user_id,lead_id,customer_name,customer_email,customer_phone,status,deal_ids_json,monthly_total,regular_total,credits_total,fees_total,term_months,notes,expires_at,created_by) VALUES(?,?,?,?,?,?,'sent',?,?,?,?,?,?,?,?,?)")
+      ->execute([$public,(int)($input['user_id']??0)?:null,(int)($input['lead_id']??0)?:null,trim((string)$input['customer_name']),trim((string)($input['customer_email']??'')),trim((string)($input['customer_phone']??'')),json_encode($ids),$calc['monthly'],$calc['regular'],$calc['credits'],$calc['fees'],$calc['term'],trim((string)($input['notes']??'')),date('Y-m-d H:i:s',strtotime('+7 days')),$actor]);
+    return $public;
+}
+function quote_get(string $public): ?array {
+    $q=rows("SELECT * FROM quotes WHERE public_id=? LIMIT 1",[$public])[0]??null;if(!$q)return null;
+    $q['items']=quote_calculate(json_decode((string)$q['deal_ids_json'],true)?:[])['items'];return $q;
+}
+function automation_enabled(string $key): bool { return (bool)scalar("SELECT enabled FROM automation_rules WHERE rule_key=? LIMIT 1",[$key]); }
+function run_sales_automation(): array {
+    $result=['tasks'=>0,'notifications'=>0,'offers'=>['expired'=>0,'queued'=>0]];
+    if(automation_enabled('offer_expiry'))$result['offers']=run_offer_automation();
+    if(automation_enabled('lead_followup')){
+        foreach(rows("SELECT * FROM leads WHERE stage NOT IN ('activated','lost') AND created_at<=datetime('now','-60 minutes') AND (last_contact_at IS NULL)") as $lead){
+            if(!(int)scalar("SELECT COUNT(*) FROM tasks WHERE entity_type='lead' AND entity_id=? AND title='Contact lead' AND status='open'",[(int)$lead['id']])){create_task('Contact lead','lead',(int)$lead['id'],null,'high',date('Y-m-d H:i:s'),'Automatic follow-up: lead has not been contacted.',0);$result['tasks']++;}
+        }
+    }
+    if(automation_enabled('quote_followup')){
+        foreach(rows("SELECT * FROM quotes WHERE status='sent' AND created_at<=datetime('now','-1 day') AND expires_at>=datetime('now')") as $q){
+            if(!(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE notification_type='quote_followup' AND subject=?",['Your SecureLink quote · '.$q['public_id']])){
+                queue_notification($q['user_id']?(int)$q['user_id']:null,null,$q['lead_id']?(int)$q['lead_id']:null,'Your SecureLink quote · '.$q['public_id'],'Your private SecureLink quote is ready. Review it before '.$q['expires_at'].'.',0,'email',(string)$q['customer_email'],null,'quote_followup');$result['notifications']++;
+            }
+        }
+    }
+    return $result;
+}
+function lead_score(array $lead): int {
+    $score=40;if(!empty($lead['phone']))$score+=10;if(!empty($lead['email']))$score+=8;if(!empty($lead['provider_id']))$score+=8;if(!empty($lead['deal_id']))$score+=12;
+    if(in_array($lead['stage']??'',['interested','follow_up'],true))$score+=8;if(in_array($lead['stage']??'',['application','order'],true))$score+=14;
+    if(!empty($lead['last_contact_at']))$score+=5;if(($lead['stage']??'')==='lost')$score=5;return max(0,min(100,$score));
+}
+function refresh_lead_scores(): void { foreach(rows("SELECT * FROM leads") as $l)db()->prepare("UPDATE leads SET lead_score=? WHERE id=?")->execute([lead_score($l),(int)$l['id']]); }
+function commission_rule_amount(int $providerId,string $category): float {
+    $v=scalar("SELECT amount FROM commission_rules WHERE active=1 AND provider_id=? AND (lower(category)=lower(?) OR category IS NULL OR category='') ORDER BY CASE WHEN lower(category)=lower(?) THEN 0 ELSE 1 END,id DESC LIMIT 1",[$providerId,$category,$category]);return (float)($v?:0);
+}
+function commission_summary_v2(): array {
+    return ['pending'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='pending'"),'approved'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='approved'"),'paid'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'"),'chargebacks'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='void'")];
 }
 
 function platform_schema_version(): string {
