@@ -68,7 +68,7 @@ function user(): ?array {
     if(empty($_SESSION['uid'])) return null;
     $s=db()->prepare('SELECT * FROM users WHERE id=?'); $s->execute([$_SESSION['uid']]); return $s->fetch() ?: null;
 }
-function require_login(): array { $u=user(); if(!$u) redirect(url('?page=login')); return $u; }
+function require_login(): array { $u=user(); if(!$u) redirect(url('?page=login')); if(function_exists('customer_session_allowed') && !customer_session_allowed((int)$u['id'])){ $_SESSION=[]; if(ini_get('session.use_cookies')){$p=session_get_cookie_params();setcookie(session_name(),'',time()-42000,$p['path'],$p['domain'],$p['secure'],$p['httponly']);} session_destroy(); redirect(url('?page=login&revoked=1')); } if(function_exists('customer_session_register')) customer_session_register((int)$u['id']); return $u; }
 function require_admin(): array { $u=require_login(); if(!in_array($u['role'],['owner','admin'],true)) { http_response_code(403); exit('Forbidden'); } return $u; }
 function require_approved(): array { $u=require_login(); if($u['role']==='customer' && $u['status']!=='approved') redirect(url('?page=pending')); return $u; }
 function audit(?int $uid,string $action,string $entity='',?int $entityId=null,array $meta=[]): void {
