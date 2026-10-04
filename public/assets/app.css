@@ -310,3 +310,238 @@ body{overflow-x:hidden}
  .provider-story h2{font-size:clamp(42px,13vw,64px)}
  .how-it-works{gap:34px;padding:64px 0}
 }
+
+
+/* Provider brand system v2 — TELUS / Rogers */
+:root{
+  --telus-purple:#4b286d;
+  --telus-purple-2:#6f3f92;
+  --telus-green:#66cc00;
+  --telus-green-soft:#b9f06a;
+  --rogers-red:#da291c;
+  --rogers-red-2:#b51f16;
+  --rogers-red-soft:#ff7a70;
+}
+
+/* Comparison + deal cards: keep provider identities unmistakably separate. */
+.provider-telus,
+.compare-offer.provider-telus,
+.deal-card.provider-telus,
+.home-deal.provider-telus,
+.application-summary.provider-telus{
+  color:#fff!important;
+  border-color:rgba(126,85,164,.58)!important;
+  background:
+    radial-gradient(circle at 88% 12%,rgba(102,204,0,.22),transparent 23%),
+    radial-gradient(circle at 8% 92%,rgba(111,63,146,.34),transparent 38%),
+    linear-gradient(145deg,#24122f 0%,#170f23 48%,#0d1119 100%)!important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 22px 55px rgba(45,20,65,.28)!important;
+}
+.provider-rogers,
+.compare-offer.provider-rogers,
+.deal-card.provider-rogers,
+.home-deal.provider-rogers,
+.application-summary.provider-rogers{
+  color:#fff!important;
+  border-color:rgba(218,41,28,.55)!important;
+  background:
+    radial-gradient(circle at 88% 12%,rgba(218,41,28,.30),transparent 27%),
+    radial-gradient(circle at 12% 90%,rgba(138,24,18,.24),transparent 34%),
+    linear-gradient(145deg,#2a0e0d 0%,#170d10 48%,#0d1118 100%)!important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 22px 55px rgba(64,12,10,.26)!important;
+}
+
+/* Fix low-contrast headings/prices caused by generic card typography. */
+.provider-telus h1,
+.provider-telus h2,
+.provider-telus h3,
+.provider-telus .price,
+.provider-telus .deal-price-row,
+.provider-telus .deal-price-row *,
+.provider-telus strong,
+.provider-telus b,
+.compare-offer.provider-telus h1,
+.compare-offer.provider-telus h2,
+.compare-offer.provider-telus h3,
+.compare-offer.provider-telus .price,
+.provider-rogers h1,
+.provider-rogers h2,
+.provider-rogers h3,
+.provider-rogers .price,
+.provider-rogers .deal-price-row,
+.provider-rogers .deal-price-row *,
+.provider-rogers strong,
+.provider-rogers b,
+.compare-offer.provider-rogers h1,
+.compare-offer.provider-rogers h2,
+.compare-offer.provider-rogers h3,
+.compare-offer.provider-rogers .price{
+  color:#fff!important;
+  opacity:1!important;
+  -webkit-text-fill-color:#fff!important;
+  text-shadow:0 2px 18px rgba(0,0,0,.28);
+}
+.provider-telus p,
+.provider-telus li,
+.provider-telus .muted,
+.compare-offer.provider-telus p{
+  color:#dfe5ec!important;
+}
+.provider-rogers p,
+.provider-rogers li,
+.provider-rogers .muted,
+.compare-offer.provider-rogers p{
+  color:#e7dfe0!important;
+}
+
+/* TELUS identifiers */
+.provider-telus .pill,
+.compare-offer.provider-telus .pill{
+  background:rgba(75,40,109,.92)!important;
+  color:#eaffd5!important;
+  border:1px solid rgba(102,204,0,.42)!important;
+  box-shadow:0 8px 26px rgba(75,40,109,.24);
+}
+.provider-telus .pill *,
+.compare-offer.provider-telus .pill *{
+  color:#eaffd5!important;
+  -webkit-text-fill-color:#eaffd5!important;
+}
+.provider-telus .button:not(.secondary),
+.provider-telus button:not(.secondary),
+.compare-offer.provider-telus .button:not(.secondary),
+.compare-offer.provider-telus button:not(.secondary){
+  background:linear-gradient(135deg,var(--telus-purple),var(--telus-purple-2))!important;
+  color:#fff!important;
+  -webkit-text-fill-color:#fff!important;
+  border:1px solid rgba(169,120,204,.42)!important;
+  box-shadow:0 12px 30px rgba(75,40,109,.35)!important;
+}
+.provider-telus .button:not(.secondary):hover,
+.compare-offer.provider-telus .button:not(.secondary):hover{
+  filter:brightness(1.08) saturate(1.05);
+}
+.provider-telus .reward{
+  background:rgba(102,204,0,.10)!important;
+  border-color:rgba(102,204,0,.28)!important;
+  color:#e9ffd8!important;
+}
+.provider-telus .featured-badge{
+  background:var(--telus-green)!important;
+  color:#173000!important;
+}
+.provider-telus .deal-facts span{
+  background:rgba(255,255,255,.055)!important;
+  border-color:rgba(177,132,207,.16)!important;
+}
+
+/* Rogers identifiers */
+.provider-rogers .pill,
+.compare-offer.provider-rogers .pill{
+  background:rgba(104,18,15,.92)!important;
+  color:#ffe9e7!important;
+  border:1px solid rgba(218,41,28,.50)!important;
+  box-shadow:0 8px 26px rgba(218,41,28,.16);
+}
+.provider-rogers .pill *,
+.compare-offer.provider-rogers .pill *{
+  color:#ffe9e7!important;
+  -webkit-text-fill-color:#ffe9e7!important;
+}
+.provider-rogers .button:not(.secondary),
+.provider-rogers button:not(.secondary),
+.compare-offer.provider-rogers .button:not(.secondary),
+.compare-offer.provider-rogers button:not(.secondary){
+  background:linear-gradient(135deg,var(--rogers-red),var(--rogers-red-2))!important;
+  color:#fff!important;
+  -webkit-text-fill-color:#fff!important;
+  border:1px solid rgba(255,126,115,.36)!important;
+  box-shadow:0 12px 30px rgba(218,41,28,.30)!important;
+}
+.provider-rogers .button:not(.secondary):hover,
+.compare-offer.provider-rogers .button:not(.secondary):hover{
+  filter:brightness(1.07) saturate(1.05);
+}
+.provider-rogers .reward{
+  background:rgba(218,41,28,.10)!important;
+  border-color:rgba(218,41,28,.26)!important;
+  color:#ffe7e5!important;
+}
+.provider-rogers .featured-badge{
+  background:var(--rogers-red)!important;
+  color:#fff!important;
+}
+.provider-rogers .deal-facts span{
+  background:rgba(255,255,255,.05)!important;
+  border-color:rgba(218,41,28,.16)!important;
+}
+
+/* Comparison card polish */
+.compare-offer.provider-telus:before,
+.compare-offer.provider-rogers:before{
+  content:"";
+  position:absolute;
+  inset:0 0 auto;
+  height:4px;
+  border-radius:32px 32px 0 0;
+  pointer-events:none;
+}
+.compare-offer.provider-telus:before{
+  background:linear-gradient(90deg,var(--telus-purple),var(--telus-green));
+}
+.compare-offer.provider-rogers:before{
+  background:linear-gradient(90deg,#7d1711,var(--rogers-red),var(--rogers-red-soft));
+}
+.best-value{
+  background:#e8f8ca!important;
+  color:#244000!important;
+  -webkit-text-fill-color:#244000!important;
+  border:1px solid rgba(102,204,0,.35)!important;
+}
+
+/* Homepage provider stories use the same exact brand language. */
+.telus-story{
+  background:
+    radial-gradient(circle at 86% 14%,rgba(102,204,0,.23),transparent 27%),
+    radial-gradient(circle at 8% 92%,rgba(111,63,146,.38),transparent 39%),
+    linear-gradient(145deg,#24122f,#11111a)!important;
+  border-color:rgba(126,85,164,.54)!important;
+}
+.telus-story span{color:var(--telus-green-soft)!important}
+.rogers-story{
+  background:
+    radial-gradient(circle at 86% 14%,rgba(218,41,28,.34),transparent 29%),
+    linear-gradient(145deg,#2a0d0d,#101116)!important;
+  border-color:rgba(218,41,28,.50)!important;
+}
+.rogers-story span{color:#ff766c!important}
+.telus-story h2,.rogers-story h2{
+  color:#fff!important;
+  -webkit-text-fill-color:#fff!important;
+  opacity:1!important;
+}
+.telus-story p,.rogers-story p{color:#dce1e9!important}
+
+/* Mobile: preserve contrast and avoid oversized dark text. */
+@media(max-width:768px){
+  .compare-offer.provider-telus h2,
+  .compare-offer.provider-rogers h2,
+  .deal-card.provider-telus h2,
+  .deal-card.provider-rogers h2{
+    color:#fff!important;
+    -webkit-text-fill-color:#fff!important;
+    opacity:1!important;
+    font-size:clamp(31px,9vw,44px);
+    line-height:.98;
+  }
+  .compare-offer.provider-telus .price,
+  .compare-offer.provider-rogers .price{
+    color:#fff!important;
+    -webkit-text-fill-color:#fff!important;
+    opacity:1!important;
+  }
+}
