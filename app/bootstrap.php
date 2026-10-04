@@ -14,11 +14,22 @@ function env_load(string $file): void {
 env_load(dirname(__DIR__).'/.env');
 function envv(string $key, ?string $default=null): ?string { return $_ENV[$key] ?? getenv($key) ?: $default; }
 function base_path(string $path=''): string { return dirname(__DIR__).($path ? '/'.ltrim($path,'/') : ''); }
+function app_base_url(): string {
+    $script = str_replace('\\\\','/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
+    $dir = rtrim(str_replace('\\\\','/', dirname($script)), '/.');
+    return $dir === '' ? '' : $dir;
+}
+function url(string $path=''): string {
+    $base = app_base_url();
+    if ($path === '' || $path === '/') return $base !== '' ? $base.'/' : '/';
+    if ($path[0] === '?') return ($base !== '' ? $base.'/' : '/').$path;
+    return ($base !== '' ? $base : '').'/'.ltrim($path,'/');
+}
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_set_cookie_params([
         'httponly'=>true,'secure'=>envv('SESSION_SECURE','true')==='true',
-        'samesite'=>'Lax','path'=>'/'
+        'samesite'=>'Lax','path'=>app_base_url() !== '' ? app_base_url().'/' : '/'
     ]);
     session_start();
 }
@@ -45,9 +56,9 @@ function user(): ?array {
     if(empty($_SESSION['uid'])) return null;
     $s=db()->prepare('SELECT * FROM users WHERE id=?'); $s->execute([$_SESSION['uid']]); return $s->fetch() ?: null;
 }
-function require_login(): array { $u=user(); if(!$u) redirect('/?page=login'); return $u; }
+function require_login(): array { $u=user(); if(!$u) redirect(url('?page=login')); return $u; }
 function require_admin(): array { $u=require_login(); if(!in_array($u['role'],['owner','admin'],true)) { http_response_code(403); exit('Forbidden'); } return $u; }
-function require_approved(): array { $u=require_login(); if($u['role']==='customer' && $u['status']!=='approved') redirect('/?page=pending'); return $u; }
+function require_approved(): array { $u=require_login(); if($u['role']==='customer' && $u['status']!=='approved') redirect(url('?page=pending')); return $u; }
 function audit(?int $uid,string $action,string $entity='',?int $entityId=null,array $meta=[]): void {
     $s=db()->prepare('INSERT INTO audit_logs(user_id,action,entity,entity_id,metadata,ip,created_at) VALUES(?,?,?,?,?,?,datetime("now"))');
     $s->execute([$uid,$action,$entity,$entityId,json_encode($meta),$_SERVER['REMOTE_ADDR']??null]);
