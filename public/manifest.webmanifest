@@ -8,7 +8,10 @@
   "background_color": "#f6f7fb",
   "theme_color": "#071022",
   "orientation": "portrait-primary",
-  "categories": ["business", "utilities"],
+  "categories": [
+    "business",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "assets/app-icon.svg",
@@ -16,5 +19,27 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "My account",
+      "short_name": "Account",
+      "url": "./?page=account"
+    },
+    {
+      "name": "Build a bundle",
+      "short_name": "Bundle",
+      "url": "./?page=bundle"
+    },
+    {
+      "name": "Notifications",
+      "short_name": "Updates",
+      "url": "./?page=notifications"
+    }
+  ],
+  "id": "./",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
   ]
 }
