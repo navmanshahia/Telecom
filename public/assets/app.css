@@ -262,3 +262,32 @@ body{overflow-x:hidden}
  .mobile-dock{position:fixed;display:grid;grid-template-columns:repeat(4,1fr);left:10px;right:10px;bottom:max(10px,env(safe-area-inset-bottom));z-index:60;padding:6px;border-radius:18px;background:#071124ed;backdrop-filter:blur(22px);border:1px solid #ffffff18;box-shadow:0 18px 55px #0009}
  .mobile-dock a{text-decoration:none;color:#b4bfd2;text-align:center;padding:10px 4px;font-size:10px;font-weight:800}
 }
+
+
+/* Production hardening controls */
+.field-help{font-size:11px;font-weight:600;color:#7b879b;margin-top:-2px}
+.auth-links{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:16px;padding-top:15px;border-top:1px solid rgba(47,107,255,.1)}
+.auth-links a{font-size:12px;font-weight:800;color:#345ed8;text-decoration:none}
+.auth-links a:hover{text-decoration:underline}
+.status-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:900;letter-spacing:.08em;vertical-align:middle}
+.status-chip.verified,.status-chip.paid{background:#dcfae6;color:#067647}
+.status-chip.unverified,.status-chip.pending{background:#fff3d6;color:#9a5b00}
+.status-chip.approved{background:#e9e8ff;color:#4638a8}
+.status-chip.void{background:#f2f4f7;color:#667085}
+.verification-form{margin:8px 0 14px}
+.verification-form button{margin:0}
+.system-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:18px 0}
+.system-checks span{padding:12px 14px;border-radius:14px;background:rgba(47,107,255,.055);border:1px solid rgba(47,107,255,.09);font-size:13px;font-weight:750;color:#304766}
+.schema-version{font-size:18px!important;overflow-wrap:anywhere}
+.provider-admin-grid,.order-admin-grid{grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+.order-admin-grid .card{align-self:start}
+.order-search{min-width:min(100%,460px)}
+.deal-facts span:has(small:first-child){position:relative}
+.application-summary .summary-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+.application-summary .summary-facts span{min-width:0}
+@media(max-width:720px){
+ .auth-links{flex-direction:column;gap:8px}
+ .provider-admin-grid,.order-admin-grid{grid-template-columns:1fr}
+ .order-search{width:100%;min-width:0}
+ .application-summary .summary-facts{grid-template-columns:1fr}
+}
