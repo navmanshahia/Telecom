@@ -1,5 +1,10 @@
 Options -Indexes
 RewriteEngine On
+
+# Friendly installer route. Works at domain root or inside a subdirectory.
+RewriteRule ^install/?$ index.php?page=install [L,QSA]
+
+# Send application routes that are not real files/directories to the front controller.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [L,QSA]
