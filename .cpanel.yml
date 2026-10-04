@@ -1,8 +1,6 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/elitdtsa/public_html/Telecom/
-    - /bin/mkdir -p $DEPLOYPATH
-    - /bin/cp -R app $DEPLOYPATH
-    - /bin/cp -R public $DEPLOYPATH
-    - /bin/cp README.md $DEPLOYPATH
+    - export APPROOT=/home/elitdtsa/public_html/Telecom
+    - /bin/mkdir -p $APPROOT/storage/logs
+    - /bin/chmod 770 $APPROOT/storage
