@@ -420,6 +420,78 @@ function referral_dashboard(array $user,string $provider='TELUS'): array {
     return ['code'=>$code,'items'=>$items,'successful'=>$successful,'pending'=>$pending,'earned'=>$earned,'paid'=>$paid,'milestone_bonus'=>$bonus,'program'=>$program];
 }
 
+
+function order_status_steps(): array {
+    return [
+      'submitted'=>'Submitted','reviewing'=>'Reviewed','ready_to_process'=>'Ready',
+      'submitted_to_provider'=>'Provider submitted','appointment_confirmed'=>'Appointment',
+      'activated'=>'Activated','completed'=>'Completed'
+    ];
+}
+function order_status_rank(string $status): int {
+    $aliases=['need_information'=>'reviewing'];
+    $status=$aliases[$status]??$status;
+    $keys=array_keys(order_status_steps());$i=array_search($status,$keys,true);
+    return $i===false?0:(int)$i;
+}
+function deal_expiry_label(?string $expires): string {
+    if(!$expires) return '';
+    $seconds=strtotime($expires)-time();
+    if($seconds<0) return 'Expired';
+    $days=(int)ceil($seconds/86400);
+    if($days<=1) return 'Ends today';
+    if($days<=14) return 'Ends in '.$days.' days';
+    return '';
+}
+function business_financials(): array {
+    $commission=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE status IN ('activated','completed')");
+    $paidCommission=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'");
+    $referralPaid=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status='paid'");
+    $referralLiability=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status IN ('eligible','approved')");
+    $monthCommission=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE status IN ('activated','completed') AND created_at>=datetime('now','start of month')");
+    $monthReferral=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status='paid' AND paid_at>=datetime('now','start of month')");
+    return ['commission'=>$commission,'paid_commission'=>$paidCommission,'referral_paid'=>$referralPaid,'referral_liability'=>$referralLiability,'month_commission'=>$monthCommission,'month_referral'=>$monthReferral,'month_net'=>$monthCommission-$monthReferral];
+}
+function conversion_funnel_v2(int $days=30): array {
+    $days=max(1,min(365,$days));$cut="-".$days." days";
+    return [
+      'Visitors'=>(int)scalar("SELECT COUNT(DISTINCT session_key) FROM analytics_events WHERE created_at>=datetime('now',?)",[$cut]),
+      'Registrations'=>(int)scalar("SELECT COUNT(*) FROM users WHERE role='customer' AND created_at>=datetime('now',?)",[$cut]),
+      'Approved'=>(int)scalar("SELECT COUNT(*) FROM users WHERE role='customer' AND approved_at IS NOT NULL AND approved_at>=datetime('now',?)",[$cut]),
+      'Deal views'=>(int)scalar("SELECT COUNT(*) FROM analytics_events WHERE event_name='deals_view' AND created_at>=datetime('now',?)",[$cut]),
+      'Applications'=>(int)scalar("SELECT COUNT(*) FROM analytics_events WHERE event_name='application_view' AND created_at>=datetime('now',?)",[$cut]),
+      'Orders'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE created_at>=datetime('now',?)",[$cut]),
+      'Activated'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('activated','completed') AND created_at>=datetime('now',?)",[$cut])
+    ];
+}
+function sync_referral_success_for_order(int $orderId): void {
+    $o=rows("SELECT o.*,u.email customer_email FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=? LIMIT 1",[$orderId])[0]??null;
+    if(!$o) return;
+    if(in_array($o['status'],['activated','completed'],true)){
+        db()->prepare("UPDATE referrals SET status=CASE WHEN status='pending' THEN 'eligible' ELSE status END,eligible_at=COALESCE(eligible_at,datetime('now')) WHERE order_id=?")->execute([$orderId]);
+    } elseif(in_array($o['status'],['cancelled','rejected'],true)){
+        db()->prepare("UPDATE referrals SET status=CASE WHEN status='pending' THEN 'not_eligible' ELSE status END WHERE order_id=?")->execute([$orderId]);
+    }
+}
+function run_offer_automation(): array {
+    $expired=(int)scalar("SELECT COUNT(*) FROM deals WHERE status='active' AND expires_at IS NOT NULL AND expires_at<datetime('now')");
+    if($expired) db()->exec("UPDATE deals SET status='paused' WHERE status='active' AND expires_at IS NOT NULL AND expires_at<datetime('now')");
+    $queued=0;
+    foreach(rows("SELECT d.id,d.name,d.expires_at,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' AND d.expires_at IS NOT NULL AND d.expires_at BETWEEN datetime('now') AND datetime('now','+14 days')") as $d){
+        $days=max(0,(int)ceil((strtotime($d['expires_at'])-time())/86400));
+        if(!in_array($days,[14,7,3,1],true)) continue;
+        $subject='Offer expiry · '.$d['provider'].' · '.$d['name'];
+        $exists=(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE notification_type='offer_expiry' AND subject=? AND date(created_at)=date('now')",[$subject]);
+        if(!$exists){queue_notification(null,null,null,$subject,$d['provider'].' · '.$d['name'].' expires in '.$days.' day'.($days===1?'':'s').'. Review or extend the offer in Admin.',0,'email',envv('ADMIN_EMAIL',''),null,'offer_expiry');$queued++;}
+    }
+    return ['expired'=>$expired,'queued'=>$queued];
+}
+function customer_dashboard_data(array $u): array {
+    $orders=rows("SELECT o.*,d.name deal,p.name provider FROM orders o JOIN deals d ON d.id=o.deal_id JOIN providers p ON p.id=o.provider_id WHERE o.user_id=? ORDER BY o.id DESC LIMIT 5",[(int)$u['id']]);
+    $ref=referral_dashboard($u,'TELUS');
+    return ['orders'=>$orders,'referrals'=>$ref,'featured'=>featured_deals(3)];
+}
+
 function platform_schema_version(): string {
     if(!db_table_exists('schema_migrations')) return 'legacy';
     return (string)(scalar("SELECT version FROM schema_migrations ORDER BY applied_at DESC,version DESC LIMIT 1") ?: 'baseline');
