@@ -81,6 +81,7 @@ function active_deals(string $category=''): array {
           JOIN providers p ON p.id=d.provider_id
           LEFT JOIN deal_merchandising m ON m.deal_id=d.id
           WHERE d.status='active' AND p.status='active'
+            AND EXISTS(SELECT 1 FROM deal_categories dc WHERE lower(dc.slug)=lower(d.category) AND dc.status='active')
             AND (d.starts_at IS NULL OR d.starts_at<=datetime('now'))
             AND (d.expires_at IS NULL OR d.expires_at>=datetime('now'))";
     $params=[];
@@ -95,6 +96,7 @@ function featured_deals(int $limit=3): array {
         FROM deals d JOIN providers p ON p.id=d.provider_id
         LEFT JOIN deal_merchandising m ON m.deal_id=d.id
         WHERE d.status='active' AND p.status='active'
+          AND EXISTS(SELECT 1 FROM deal_categories dc WHERE lower(dc.slug)=lower(d.category) AND dc.status='active')
           AND (d.starts_at IS NULL OR d.starts_at<=datetime('now'))
           AND (d.expires_at IS NULL OR d.expires_at>=datetime('now'))
         ORDER BY COALESCE(m.featured,0) DESC,COALESCE(m.display_order,999999),d.id DESC LIMIT ".$limit);
@@ -139,6 +141,8 @@ function filtered_deals(array $filters=[]): array {
     $sql.=" ORDER BY ".($orders[$sort]??$orders['featured']);
     return rows($sql,$params);
 }
+function active_deal_categories(): array { return rows("SELECT * FROM deal_categories WHERE status='active' ORDER BY display_order,name"); }
+function all_deal_categories(): array { return rows("SELECT dc.*,(SELECT COUNT(*) FROM deals d WHERE lower(d.category)=lower(dc.slug)) deal_count FROM deal_categories dc ORDER BY dc.display_order,dc.name"); }
 function active_provider_names(): array {
     return array_map(fn($r)=>(string)$r['name'],rows("SELECT name FROM providers WHERE status='active' ORDER BY display_order,name"));
 }
@@ -350,6 +354,8 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS bundle_carts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,deal_ids_json TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'active',monthly_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS bundle_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER REFERENCES providers(id),name TEXT NOT NULL,required_categories TEXT NOT NULL DEFAULT '[]',discount_monthly REAL NOT NULL DEFAULT 0,bonus_credit REAL NOT NULL DEFAULT 0,waive_activation INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS deployment_backups(id INTEGER PRIMARY KEY AUTOINCREMENT,filename TEXT NOT NULL,bytes INTEGER NOT NULL DEFAULT 0,sha256 TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS deal_categories(id INTEGER PRIMARY KEY AUTOINCREMENT,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',display_order INTEGER NOT NULL DEFAULT 100,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    foreach([['internet','Internet',10],['mobility','Mobility',20],['tv','TV',30],['homephone','Home Phone',40],['security','Security',50],['streaming','Streaming',60],['devices','Devices',70]] as $cat)db()->prepare("INSERT OR IGNORE INTO deal_categories(slug,name,status,display_order) VALUES(?,?,'active',?)")->execute($cat);
     foreach([['lead_followup','Lead follow-up',1,60],['quote_followup','Quote follow-up',1,1440],['appointment_reminder','Appointment reminder',1,1440],['offer_expiry','Offer expiry',1,0]] as $rule){
         db()->prepare("INSERT OR IGNORE INTO automation_rules(rule_key,name,enabled,delay_minutes) VALUES(?,?,?,?)")->execute($rule);
     }
