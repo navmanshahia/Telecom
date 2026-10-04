@@ -63,15 +63,3 @@ CREATE TABLE IF NOT EXISTS analytics_events(
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_events_name_time ON analytics_events(event_name,created_at);
-
-CREATE TABLE IF NOT EXISTS quotes(id INTEGER PRIMARY KEY AUTOINCREMENT,public_id TEXT NOT NULL UNIQUE,user_id INTEGER REFERENCES users(id),lead_id INTEGER REFERENCES leads(id),customer_name TEXT NOT NULL,customer_email TEXT,customer_phone TEXT,status TEXT NOT NULL DEFAULT 'draft',items_json TEXT NOT NULL DEFAULT '[]',monthly_total REAL NOT NULL DEFAULT 0,regular_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,fees_total REAL NOT NULL DEFAULT 0,term_months INTEGER NOT NULL DEFAULT 24,notes TEXT,expires_at TEXT,accepted_at TEXT,created_by INTEGER REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS commission_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER REFERENCES providers(id),category TEXT,amount REAL NOT NULL DEFAULT 0,salesperson_percent REAL NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS documents(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER REFERENCES users(id),order_id INTEGER REFERENCES orders(id),document_type TEXT NOT NULL,label TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'requested',storage_path TEXT,original_name TEXT,expires_at TEXT,reviewed_by INTEGER REFERENCES users(id),reviewed_at TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE IF NOT EXISTS customer_notifications(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,message TEXT NOT NULL,link TEXT,is_read INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX IF NOT EXISTS idx_customer_notifications_user ON customer_notifications(user_id,is_read,created_at);
-CREATE TABLE IF NOT EXISTS automation_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,rule_key TEXT NOT NULL UNIQUE,name TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,delay_minutes INTEGER NOT NULL DEFAULT 0,config_json TEXT,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-INSERT OR IGNORE INTO automation_rules(rule_key,name,enabled,delay_minutes) VALUES
-('lead_uncontacted','New lead not contacted',1,60),
-('appointment_reminder','Appointment reminder',1,1440),
-('offer_expiry','Offer expiry alerts',1,0),
-('lost_lead_followup','Lost lead follow-up',1,10080);
