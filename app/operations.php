@@ -176,6 +176,8 @@ function queue_notification(?int $userId,?int $orderId,?int $leadId,string $subj
         $recipient=(string)(scalar("SELECT email FROM users WHERE id=?",[$userId])?:'');
     }
     $scheduledAt=$scheduledAt?:date('Y-m-d H:i:s');
+    $scheduledAt=str_replace('T',' ',$scheduledAt);
+    if(strlen($scheduledAt)===16)$scheduledAt.=':00';
     $s=db()->prepare("INSERT INTO notification_queue(user_id,order_id,lead_id,channel,notification_type,recipient,subject,message,status,scheduled_at,created_by)
                       VALUES(?,?,?,?,?,?,?,?,'queued',?,?)");
     $s->execute([$userId,$orderId,$leadId,$channel,$type,$recipient,$subject,$message,$scheduledAt,$actor?:null]);
