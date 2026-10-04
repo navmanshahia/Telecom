@@ -206,15 +206,6 @@ document.addEventListener("DOMContentLoaded",()=>{
   window.addEventListener("offline",()=>networkToast("You’re offline. SecureLink will reconnect when your network returns."));
   window.addEventListener("online",()=>networkToast("Back online."));
 
-  document.querySelectorAll("[data-bundle-builder]").forEach(builder=>{
-    const sync=()=>{let total=0,credits=0;builder.querySelectorAll('input[type="checkbox"]:checked').forEach(x=>{total+=Number(x.dataset.price||0);credits+=Number(x.dataset.credit||0)});const t=builder.querySelector("[data-bundle-total]"),cr=builder.querySelector("[data-bundle-credit]");if(t)t.textContent="$"+total.toFixed(2);if(cr)cr.textContent="$"+credits.toFixed(0)+" credits/rewards";};
-    builder.addEventListener("change",sync);sync();
-  });
-  // App-like navigation feedback and keyboard command search.
-  document.querySelectorAll(".mobile-dock-v2 a").forEach(a=>a.addEventListener("pointerdown",()=>a.classList.add("tap"),{passive:true}));
-  document.addEventListener("pointerup",()=>document.querySelectorAll(".mobile-dock-v2 a.tap").forEach(a=>a.classList.remove("tap")),{passive:true});
-  document.addEventListener("keydown",e=>{if(e.key==="/"&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||"")){const link=document.querySelector('a[href*="view=search"]');if(link){e.preventDefault();location.href=link.href;}}});
-
   document.querySelectorAll(".compare-picker select").forEach(select=>{
     select.addEventListener("change",()=>select.form?.requestSubmit());
   });
