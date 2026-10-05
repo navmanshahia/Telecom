@@ -4,6 +4,11 @@ require dirname(__DIR__).'/app/bootstrap.php';
 require_once dirname(__DIR__).'/app/operations.php';
 ensure_platform_schema();
 $page=$_GET['page']??'home';
+if(!empty($_SESSION['impersonator_user_id'])&&!empty($_SESSION['impersonated_user_id'])){
+ if($page==='exit-customer-view'&&$_SERVER['REQUEST_METHOD']==='POST'){csrf_check();$adminId=(int)$_SESSION['impersonator_user_id'];$customerId=(int)$_SESSION['impersonated_user_id'];$_SESSION['user_id']=$adminId;unset($_SESSION['impersonator_user_id'],$_SESSION['impersonated_user_id']);audit($adminId,'impersonation_end','user',$customerId,[]);redirect(url('?page=admin&view=customer360&id='.$customerId));}
+ echo '<div style="position:sticky;top:0;z-index:99999;padding:10px 16px;background:#fff3cd;color:#4a3500;border-bottom:1px solid #e3c56b;text-align:center;font-weight:700">Viewing customer account as administrator <form method="post" action="'.e(url('?page=exit-customer-view')).'" style="display:inline;margin-left:12px"><input type="hidden" name="_token" value="'.e(csrf()).'"><button style="padding:6px 12px">Exit Customer View</button></form></div>';
+}
+
 if($page==='install'){ require dirname(__DIR__).'/app/install.php'; exit; }
 if(!empty($_GET['campaign'])){ $_SESSION['campaign_code']=preg_replace('/[^A-Za-z0-9_-]/','',$_GET['campaign']); }
 if(!empty($_GET['ref'])){ $ref=strtoupper(preg_replace('/[^A-Za-z0-9_-]/','',$_GET['ref']));$_SESSION['referral_code']=$ref;setcookie('securelink_ref',$ref,['expires'=>time()+60*60*24*30,'path'=>'/','secure'=>(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off'),'httponly'=>true,'samesite'=>'Lax']); }
