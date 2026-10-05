@@ -338,6 +338,37 @@ function ensure_platform_schema(): void {
     $addColumn('orders','commission_amount','REAL NOT NULL DEFAULT 0');
     $addColumn('orders','commission_status',"TEXT NOT NULL DEFAULT 'pending'");
     $addColumn('notification_queue','notification_type',"TEXT NOT NULL DEFAULT 'transactional'");
+    $addColumn('referrals','referrer_user_id','INTEGER');
+    $addColumn('referrals','customer_user_id','INTEGER');
+    $addColumn('referrals','admin_notes','TEXT');
+    $addColumn('referrals','customer_notes','TEXT');
+    $addColumn('referrals','updated_at','TEXT');
+    db()->exec("CREATE TABLE IF NOT EXISTS customer_service_accounts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        service_type TEXT NOT NULL,
+        account_number TEXT,
+        cid TEXT,
+        account_name TEXT,
+        service_address TEXT,
+        email TEXT,
+        phone TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_customer_service_accounts_user ON customer_service_accounts(user_id,provider,service_type)");
+    db()->exec("CREATE TABLE IF NOT EXISTS referral_status_history(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        referral_id INTEGER NOT NULL REFERENCES referrals(id) ON DELETE CASCADE,
+        old_status TEXT,
+        new_status TEXT NOT NULL,
+        admin_note TEXT,
+        customer_note TEXT,
+        changed_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )");
     $addColumn('leads','lead_score','INTEGER NOT NULL DEFAULT 50');
     $addColumn('leads','last_contact_at','TEXT');
     $addColumn('leads','estimated_value','REAL NOT NULL DEFAULT 0');
