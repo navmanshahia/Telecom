@@ -327,6 +327,7 @@ function ensure_platform_schema(): void {
     $addColumn('deals','starts_at','TEXT');
     $addColumn('deals','expires_at','TEXT');
 
+    $addColumn('orders','quote_id','INTEGER');
     $addColumn('orders','campaign_id','INTEGER');
     $addColumn('orders','lead_id','INTEGER');
     $addColumn('orders','sales_agent','TEXT');
