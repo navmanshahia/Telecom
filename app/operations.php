@@ -383,6 +383,13 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id,status,created_at)");
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,display_name TEXT,active INTEGER NOT NULL DEFAULT 1,commission_percent REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id))");
+    $addColumn('commission_ledger','activated_at','TEXT');
+    $addColumn('commission_ledger','clawback_until','TEXT');
+    $addColumn('commission_ledger','clawback_amount','REAL NOT NULL DEFAULT 0');
+    $addColumn('commission_ledger','clawback_status',"TEXT NOT NULL DEFAULT 'none'");
+    $addColumn('commission_ledger','clawback_reason','TEXT');
+    $addColumn('commission_ledger','clawback_at','TEXT');
+    db()->exec("CREATE TABLE IF NOT EXISTS commission_adjustments(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,sales_agent TEXT,amount REAL NOT NULL,adjustment_type TEXT NOT NULL DEFAULT 'clawback',reason TEXT,status TEXT NOT NULL DEFAULT 'open',created_by INTEGER REFERENCES users(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,resolved_at TEXT)");
     db()->exec("CREATE TABLE IF NOT EXISTS bundle_carts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,deal_ids_json TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'active',monthly_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS bundle_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,provider_id INTEGER REFERENCES providers(id),name TEXT NOT NULL,required_categories TEXT NOT NULL DEFAULT '[]',discount_monthly REAL NOT NULL DEFAULT 0,bonus_credit REAL NOT NULL DEFAULT 0,waive_activation INTEGER NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS deployment_backups(id INTEGER PRIMARY KEY AUTOINCREMENT,filename TEXT NOT NULL,bytes INTEGER NOT NULL DEFAULT 0,sha256 TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
@@ -653,6 +660,19 @@ function commission_for_order_v2(int $orderId): float {
 function commission_summary_v2(): array {
     return ['pending'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='pending'"),'approved'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='approved'"),'paid'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'"),'chargebacks'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='void'")];
 }
+function commission_clawback_sync(): void {
+    $active=['activated','completed'];foreach(rows("SELECT o.*,cl.id ledger_id,cl.activated_at,cl.clawback_until,cl.salesperson_amount,cl.status ledger_status,cl.clawback_status FROM orders o JOIN commission_ledger cl ON cl.order_id=o.id") as $x){
+        $oid=(int)$x['id'];$isActive=in_array($x['status'],$active,true);
+        if($isActive && empty($x['activated_at'])){db()->prepare("UPDATE commission_ledger SET activated_at=datetime('now'),clawback_until=datetime('now','+90 days'),status=CASE WHEN status='pending' THEN 'hold' ELSE status END WHERE id=?")->execute([(int)$x['ledger_id']]);continue;}
+        if(!$isActive && !empty($x['activated_at']) && !empty($x['clawback_until']) && strtotime((string)$x['clawback_until'])>=time() && $x['clawback_status']==='none'){
+            $amt=max(0,(float)$x['salesperson_amount']);db()->prepare("UPDATE commission_ledger SET clawback_amount=?,clawback_status='required',clawback_reason=?,clawback_at=datetime('now'),status=CASE WHEN status='paid' THEN status ELSE 'clawback' END WHERE id=?")->execute([$amt,'Service cancelled before 90-day retention period',(int)$x['ledger_id']]);if($amt>0)db()->prepare("INSERT INTO commission_adjustments(order_id,sales_agent,amount,adjustment_type,reason,status) VALUES(?,?,?,'clawback',?,'open')")->execute([$oid,$x['sales_agent'],-$amt,'90-day cancellation clawback']);continue;}
+        if($isActive && !empty($x['clawback_until']) && strtotime((string)$x['clawback_until'])<time() && $x['clawback_status']==='none' && in_array($x['ledger_status'],['pending','hold'],true))db()->prepare("UPDATE commission_ledger SET status='approved',clawback_status='cleared' WHERE id=?")->execute([(int)$x['ledger_id']]);
+    }
+}
+function salesperson_commission_v3(string $name): array {
+    commission_clawback_sync();$risk=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE sales_agent=? AND status='hold'",[$name]);$protected=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE sales_agent=? AND status IN ('approved','paid') AND clawback_status IN ('none','cleared')",[$name]);$clawbacks=abs((float)scalar("SELECT COALESCE(SUM(amount),0) FROM commission_adjustments WHERE sales_agent=? AND adjustment_type='clawback' AND status='open'",[$name]));$payable=max(0,(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE sales_agent=? AND status='approved'",[$name])-$clawbacks);return compact('risk','protected','clawbacks','payable');
+}
+
 
 
 function sync_commission_ledger(int $orderId): void {
