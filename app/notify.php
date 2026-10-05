@@ -10,6 +10,7 @@ ensure_platform_schema();
 
 $limit=isset($argv[1])?(int)$argv[1]:50;
 $automation=run_sales_automation();
+commission_clawback_sync();
 $renewals=generate_renewal_opportunities();
 $result=process_notification_queue($limit);
 $result['renewal_opportunities']=$renewals;
