@@ -19,7 +19,7 @@ function log_comm(?int $userId,?int $leadId,?int $orderId,string $kind,string $v
 }
 function create_task(string $title,string $entityType,int $entityId,?int $assigned,string $priority,?string $due,string $description,int $actor): void {
  $s=db()->prepare("INSERT INTO tasks(title,description,entity_type,entity_id,assigned_to,priority,due_at,created_by) VALUES(?,?,?,?,?,?,?,?)");
- $s->execute([$title,$description,$entityType,$entityId,$assigned,$priority,$due,$actor]);
+ $s->execute([$title,$description,$entityType,$entityId,$assigned,$priority,$due,$actor ?: null]);
 }
 function dashboard_metrics(): array {
  return [
