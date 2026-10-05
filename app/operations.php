@@ -28,7 +28,7 @@ function dashboard_metrics(): array {
  'new_orders'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('submitted','reviewing','need_information','ready_to_process')"),
  'sla'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE first_contact_at IS NULL AND status='submitted' AND created_at<=datetime('now','-45 minutes')"),
  'tasks'=>(int)scalar("SELECT COUNT(*) FROM tasks WHERE status='open' AND (due_at IS NULL OR due_at<=datetime('now','+1 day'))"),
- 'payouts'=>(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status IN ('eligible','approved')"),
+ 'payouts'=>(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status IN ('eligible','approved','processing','partial_completed','other_processing')"),
  'commissions'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status IN ('pending','approved')"),
  'activated'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('activated','completed') AND created_at>=datetime('now','start of month')")
  ];
@@ -486,9 +486,9 @@ function referral_dashboard(array $user,string $provider='TELUS'): array {
     $items=rows("SELECT r.*,o.public_id,o.status order_status FROM referrals r LEFT JOIN orders o ON o.id=r.order_id WHERE r.referred_by IN (?,?,?) ORDER BY r.id DESC",[$code,(string)($user['email']??''),(string)($user['name']??'')]);
     $successful=0;$pending=0;$earned=0.0;$paid=0.0;
     foreach($items as $r){
-        if(in_array($r['status'],['eligible','approved','paid'],true)){$successful++;$earned+=(float)$r['reward_amount'];}
-        elseif($r['status']==='pending'){$pending++;}
-        if($r['status']==='paid')$paid+=(float)$r['reward_amount'];
+        if(in_array($r['status'],['eligible','approved','paid','partial_completed','completed'],true)){$successful++;$earned+=(float)$r['reward_amount'];}
+        elseif(in_array($r['status'],['pending','processing','other_processing'],true)){$pending++;}
+        if(in_array($r['status'],['paid','completed'],true))$paid+=(float)$r['reward_amount'];
     }
     $program=active_referral_program($provider);
     $bonus=0.0;
@@ -525,7 +525,7 @@ function deal_expiry_label(?string $expires): string {
 function business_financials(): array {
     $commission=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE status IN ('activated','completed')");
     $paidCommission=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'");
-    $referralPaid=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status='paid'");
+    $referralPaid=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status IN ('paid','completed')");
     $referralLiability=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status IN ('eligible','approved')");
     $monthCommission=(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE status IN ('activated','completed') AND created_at>=datetime('now','start of month')");
     $monthReferral=(float)scalar("SELECT COALESCE(SUM(reward_amount),0) FROM referrals WHERE status='paid' AND paid_at>=datetime('now','start of month')");
