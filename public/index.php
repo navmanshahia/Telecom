@@ -292,6 +292,16 @@ if($page==='sales'){
    $public=quote_create(['lead_id'=>$lid,'customer_name'=>$lead['name'],'customer_email'=>$lead['email'],'customer_phone'=>$lead['phone'],'deal_ids'=>$_POST['deal_ids']??[],'notes'=>trim($_POST['notes']??'')],(int)$u['id']);
    $_SESSION['sales_flash']='Quote '.$public.' created.';
   }
+  if($act==='sales_lead_create'){
+   $leadName=trim((string)($_POST['name']??''));$leadEmail=strtolower(trim((string)($_POST['email']??'')));$leadPhone=trim((string)($_POST['phone']??''));$notes=trim((string)($_POST['notes']??''));
+   if($leadName===''||($leadEmail!==''&&!filter_var($leadEmail,FILTER_VALIDATE_EMAIL))){$_SESSION['sales_flash']='Lead not created: check name/email.';}
+   else{
+    $sourceId=(int)(scalar("SELECT id FROM sale_sources WHERE name='Salesperson Generated' LIMIT 1")?:0);
+    if(!$sourceId){db()->prepare("INSERT OR IGNORE INTO sale_sources(name,active) VALUES('Salesperson Generated',1)")->execute();$sourceId=(int)(scalar("SELECT id FROM sale_sources WHERE name='Salesperson Generated' LIMIT 1")?:0);}
+    db()->prepare("INSERT INTO leads(name,email,phone,stage,source_id,sales_agent,next_follow_up_at,notes) VALUES(?,?,?,'lead',?,?,datetime('now','+1 day'),?)")->execute([$leadName,$leadEmail,$leadPhone,$sourceId?:null,$name,$notes]);
+    $newLead=(int)db()->lastInsertId();audit((int)$u['id'],'sales_self_generated_lead','lead',$newLead);$_SESSION['sales_flash']='Self-generated lead added.';
+   }
+  }
   redirect(url('?page=sales'));
  }
 
@@ -302,6 +312,7 @@ if($page==='sales'){
  $salesLedger=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id WHERE lower(cl.sales_agent)=lower(?) ORDER BY cl.id DESC LIMIT 40",[(string)$u['name']]);
  $target=rows("SELECT * FROM sales_targets WHERE lower(sales_agent)=lower(?) AND period=? LIMIT 1",[(string)$u['name'],date('Y-m')])[0]??[];
  $todayActions=smart_action_queue((string)$u['name']);
+ $forecast=sales_commission_forecast($u);$bonus=sales_bonus_progress($u);$salesRef=sales_personal_link($u);$myCustomerCount=count(salesperson_customers($u));
  layout_start('Sales portal');
 ?>
 <?php if(!empty($_SESSION['sales_flash'])):?><p class="alert success"><?=e($_SESSION['sales_flash']);unset($_SESSION['sales_flash'])?></p><?php endif;?>
@@ -309,6 +320,15 @@ if($page==='sales'){
  <div><span class="eyebrow">SALESPERSON OS · V5</span><h1><?=e(explode(' ',trim($u['name']))[0])?>’s desk.</h1><p>Lead → quote → order → activation → payout.</p><a class="button secondary" href="<?=e(url('?page=sales-customer-create'))?>">Convert lead to customer</a></div>
  <strong>$<?=number_format($d['commission'],2)?><small>tracked salesperson pay</small></strong>
 </section>
+<section class="sales-v6-launch">
+ <a href="<?=e(url('?page=sales-customers'))?>"><b>My Customers</b><span><?=$myCustomerCount?> customers →</span></a>
+ <a href="<?=e(url('?page=sales-quotes'))?>"><b>Quote Builder</b><span>Create & send quotes →</span></a>
+ <a href="<?=e(url('?page=sales-offers'))?>"><b>Offer Sender</b><span>Send a live deal →</span></a>
+ <a href="<?=e(url('?page=sales-email'))?>"><b>Email Studio</b><span>Templates + custom email →</span></a>
+ <a href="<?=e(url('?page=sales-scripts'))?>"><b>Sales Scripts</b><span>Openers & objections →</span></a>
+ <a href="<?=e(url('?page=sales-search'))?>"><b>Search Everything</b><span>Customers, leads, orders, quotes →</span></a>
+</section>
+<section class="card sales-referral-strip"><div><span class="eyebrow">PERSONAL SALES LINK</span><h2>Bring your own customers.</h2><p class="muted">Registrations and help requests through this link are attributed to your sales account.</p></div><code><?=e($salesRef)?></code><button type="button" class="secondary" data-copy-sales-link="<?=e($salesRef)?>">Copy link</button></section>
 
 <div class="account-kpis">
  <article class="card"><span>Leads</span><strong><?=count($d['leads'])?></strong></article>
@@ -316,6 +336,13 @@ if($page==='sales'){
  <article class="card"><span>Orders this month</span><strong><?=$d['monthOrders']?></strong></article>
  <article class="card"><span>Activations</span><strong><?=$d['activated']?></strong></article>
 </div>
+<section class="sales-forecast-grid">
+ <article class="card"><span class="eyebrow">COMMISSION FORECAST</span><h2>$<?=number_format($forecast['total_expected'],2)?></h2><p>$<?=number_format($forecast['open_orders'],2)?> in open orders + $<?=number_format($forecast['quote_potential'],2)?> potential from live quotes.</p></article>
+ <article class="card"><span class="eyebrow">PAYDAY FORECAST</span><h2>$<?=number_format($forecast['approved'],2)?></h2><p>Currently approved for the next payout. Pending earnings remain visible in your wallet.</p></article>
+ <article class="card bonus-tracker"><span class="eyebrow">BONUS TRACKER</span><?php if($bonus['rules']):foreach($bonus['rules'] as $br):?><div class="bonus-row"><div><b><?=e($br['name'])?></b><small><?=e(ucfirst($br['metric']))?> · <?=number_format((float)$br['current'],0)?> / <?=number_format((float)$br['threshold_value'],0)?></small></div><strong><?=$br['unlocked']?'UNLOCKED':'$'.number_format((float)$br['bonus_amount'],0)?></strong><i><span style="width:<?=$br['progress']?>%"></span></i></div><?php endforeach;else:?><h2>No bonus plan set</h2><p class="muted">When the owner configures sales bonuses, live progress appears here.</p><?php endif;?></article>
+</section>
+<section class="card self-lead-card"><div class="row between"><div><span class="eyebrow">SELF-GENERATED LEAD</span><h2>Add a prospect in seconds.</h2></div><span class="pill">YOUR PIPELINE</span></div><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="sales_lead_create"><div class="formgrid"><label>Name<input name="name" required></label><label>Email<input type="email" name="email"></label><label>Phone<input name="phone"></label><label>Notes<input name="notes" placeholder="Needs Internet + 2 lines"></label></div><button>Add lead</button></form></section>
+
 <section class="card sales-action-feed">
  <div class="section-title-inline"><div><span class="eyebrow">TODAY · ACTION FEED</span><h2>What needs my attention.</h2></div><span class="pill"><?=count($todayActions)?> ACTION<?=count($todayActions)===1?'':'S'?></span></div>
  <div class="sales-action-list"><?php foreach(array_slice($todayActions,0,8) as $act):?><a href="<?=e(url($act['url']))?>" class="sales-action-item <?=e($act['priority'])?>"><span><?=e(strtoupper($act['type']))?></span><div><b><?=e($act['title'])?></b><small><?=e($act['reason'])?></small></div><i>→</i></a><?php endforeach;if(!$todayActions):?><div class="empty-state compact"><b>You're caught up.</b><span>No overdue assigned leads, quote follow-ups or order exceptions right now.</span></div><?php endif;?></div>
@@ -417,6 +444,7 @@ if($page==='sales'){
 <script>
 document.querySelectorAll('[data-earning-amount]').forEach(el=>el.addEventListener('change',()=>{let total=0;document.querySelectorAll('[data-earning-amount]:checked').forEach(x=>total+=Number(x.dataset.earningAmount||0));const out=document.querySelector('[data-earnings-total]');if(out)out.textContent='$'+total.toFixed(2);}));
 </script>
+<script>document.querySelectorAll('[data-copy-sales-link]').forEach(b=>b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(b.dataset.copySalesLink);b.textContent='Copied ✓'}catch(e){prompt('Copy link',b.dataset.copySalesLink)}}))</script>
 <?php layout_end();exit;
 }
 
