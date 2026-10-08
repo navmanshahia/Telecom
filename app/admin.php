@@ -111,6 +111,22 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   redirect(url('?page=admin&view=salespeople'));
  }
  if($act==='salesperson_update'){if(!in_array($a['role'],['owner','admin'],true)){http_response_code(403);exit('Owner/admin required.');}$target=rows("SELECT * FROM users WHERE id=? AND role='salesperson' LIMIT 1",[$id])[0]??null;if($target){$status=in_array($_POST['status']??'approved',['approved','suspended','blocked'],true)?$_POST['status']:'approved';db()->prepare("UPDATE users SET name=?,email=?,phone=?,status=? WHERE id=?")->execute([trim($_POST['name']??$target['name']),strtolower(trim($_POST['email']??$target['email'])),trim($_POST['phone']??''),$status,$id]);$pw=(string)($_POST['new_password']??'');if($pw!==''){if(strlen($pw)<12){$_SESSION['admin_flash']='New password must be at least 12 characters.';}else db()->prepare("UPDATE users SET password_hash=? WHERE id=?")->execute([password_hash($pw,PASSWORD_DEFAULT),$id]);}audit((int)$a['id'],'salesperson_update','user',$id,['status'=>$status]);}}
+ if($act==='sales_commission_tier_save'){
+  if($a['role']!=='owner'){http_response_code(403);exit('Owner access required.');}
+  foreach(['standard','premier'] as $tierKey){
+    foreach(salesperson_commission_products() as $key=>$label){
+      $raw=trim((string)($_POST[$tierKey.'_'.$key]??''));
+      if($raw==='') continue;
+      $amount=max(0,(float)$raw);
+      db()->prepare("INSERT INTO sales_commission_tier_rates(tier_key,product_key,amount,updated_at) VALUES(?,?,?,datetime('now')) ON CONFLICT(tier_key,product_key) DO UPDATE SET amount=excluded.amount,updated_at=datetime('now')")
+        ->execute([$tierKey,$key,$amount]);
+    }
+  }
+  audit((int)$a['id'],'sales_commission_tier_save','sales_commission_tiers',null,[]);
+  $_SESSION['admin_flash']='Standard and Premier commission rates saved. New/unearned sales will use the updated rates.';
+  $_SESSION['admin_flash_type']='success';
+  redirect(url('?page=admin&view=salespeople'));
+ }
  if($act==='salesperson_commission_save'){
   if($a['role']!=='owner'){http_response_code(403);exit('Owner access required.');}
   $target=rows("SELECT id,name FROM users WHERE id=? AND role='salesperson' LIMIT 1",[$id])[0]??null;
@@ -298,8 +314,8 @@ elseif($view==='retention'){ $req=rows("SELECT cr.*,u.name customer,o.public_id 
 elseif($view==='feedback'){ $f=customer_feedback_summary();$rows=rows("SELECT cf.*,u.name customer,o.public_id FROM customer_feedback cf JOIN users u ON u.id=cf.user_id LEFT JOIN orders o ON o.id=cf.order_id ORDER BY cf.id DESC LIMIT 100");?><div class="pagehead"><div><span class="eyebrow">CUSTOMER EXPERIENCE</span><h1>Feedback that creates action.</h1></div></div><div class="account-kpis"><article class="card"><span>Responses</span><strong><?=$f['responses']?></strong></article><article class="card"><span>NPS</span><strong><?=number_format($f['nps'],0)?></strong></article><article class="card"><span>Rating</span><strong><?=number_format($f['rating'],1)?>/5</strong></article><article class="card"><span>Needs attention</span><strong><?=$f['attention']?></strong></article></div><div class="feedback-admin"><?php foreach($rows as $x):?><article class="card"><span class="pill">NPS <?=$x['score']?> · <?=$x['rating']?>/5</span><h2><?=e($x['customer'])?></h2><p><?=e($x['comment'])?></p></article><?php endforeach;?></div><?php }
 elseif($view==='salescontrol'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name)) leads,(SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name) AND l.next_follow_up_at<=datetime('now','+1 day') AND l.stage NOT IN ('activated','lost')) followups,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name) AND o.created_at>=datetime('now','start of month')) month_orders,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name) AND o.status IN ('activated','completed') AND o.created_at>=datetime('now','start of month')) activations,(SELECT COALESCE(SUM(o.commission_amount),0) FROM orders o WHERE lower(o.sales_agent)=lower(u.name) AND o.commission_status IN ('pending','approved')) commission FROM users u WHERE u.role='salesperson' ORDER BY u.name");$unassigned=rows("SELECT * FROM leads WHERE COALESCE(trim(sales_agent),'')='' ORDER BY lead_score DESC,id DESC LIMIT 100");?>
 <div class="pagehead"><div><span class="eyebrow">SALES CONTROL CENTRE</span><h1>Team pipeline & assignment.</h1><p class="muted">Control ownership, follow-ups, orders, activations and commission from one screen.</p></div></div><div class="account-kpis"><?php foreach($staff as $s):?><article class="card"><span><?=e($s['name'])?></span><strong><?=$s['activations']?> activations</strong><small><?=$s['leads']?> leads · <?=$s['followups']?> due · <?=$s['month_orders']?> orders · $<?=number_format((float)$s['commission'],0)?> open commission</small></article><?php endforeach;?></div><section class="card section"><h2>Unassigned lead inbox</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="lead_bulk_assign"><label>Assign selected to<select name="salesperson_id"><option value="">Unassigned</option><?php foreach($staff as $s):?><option value="<?=$s['id']?>"><?=e($s['name'])?></option><?php endforeach;?></select></label><?php foreach($unassigned as $l):?><label class="sales-row"><input type="checkbox" name="lead_ids[]" value="<?=$l['id']?>"><span><b><?=e($l['name'])?></b> · <?=e($l['email']?:$l['phone'])?> · score <?=$l['lead_score']?></span></label><?php endforeach;if(!$unassigned):?><p class="muted">No unassigned leads.</p><?php endif;?><button>Assign selected leads</button></form></section><?php }
-elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name)) lead_count,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name)) order_count,(SELECT COALESCE(SUM(cl.salesperson_amount),0) FROM commission_ledger cl WHERE lower(cl.sales_agent)=lower(u.name) AND cl.status IN ('pending','hold','approved','paid')) salesperson_commission FROM users u WHERE u.role='salesperson' ORDER BY u.name");$bonusRules=rows("SELECT * FROM sales_bonus_rules ORDER BY active DESC,threshold_value");?>
-<div class="pagehead"><div><span class="eyebrow">SALES TEAM</span><h1>Salesperson accounts & pay rates.</h1><p class="muted">Create logins, control access and set a different fixed payout for every salesperson and product type.</p></div><a class="button secondary" href="<?=e(url('?page=sales'))?>">Open sales portal</a></div>
+elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name)) lead_count,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name)) order_count,(SELECT COALESCE(SUM(cl.salesperson_amount),0) FROM commission_ledger cl WHERE lower(cl.sales_agent)=lower(u.name) AND cl.status IN ('pending','hold','approved','paid')) salesperson_commission FROM users u WHERE u.role='salesperson' ORDER BY u.name");$bonusRules=rows("SELECT * FROM sales_bonus_rules ORDER BY active DESC,threshold_value");$commissionTiers=sales_commission_tiers();?>
+<div class="pagehead"><div><span class="eyebrow">SALES TEAM</span><h1>Salespeople, tiers & pay.</h1><p class="muted">Standard covers the first 10 activated sales each calendar month. Premier starts with sale #11. Personal overrides remain available for exceptions.</p></div><a class="button secondary" href="<?=e(url('?page=sales'))?>">Open sales portal</a></div>
 <?php if(!empty($_SESSION['admin_flash'])):$flashType=$_SESSION['admin_flash_type']??'success';?><div class="alert <?=$flashType==='error'?'error':'success'?>"><?=e($_SESSION['admin_flash']);unset($_SESSION['admin_flash'],$_SESSION['admin_flash_type'])?></div><?php endif;?>
 <?php if(!empty($_SESSION['salesperson_convert_candidate'])):$candidate=rows("SELECT id,name,email,status FROM users WHERE id=? AND role='customer' LIMIT 1",[(int)$_SESSION['salesperson_convert_candidate']])[0]??null;if($candidate):?>
 <section class="card convert-customer-card">
@@ -316,6 +332,22 @@ elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM le
  </form>
 </section>
 <?php else:unset($_SESSION['salesperson_convert_candidate']);endif;endif;?>
+<?php if($a['role']==='owner'):?>
+<section class="card section commission-tier-admin">
+ <div class="row between"><div><span class="eyebrow">COMMISSION TIERS</span><h2>Standard → Premier</h2><p class="muted">Sales #1–10 each month use Standard. Sale #11 and every sale after it use Premier. Earned commissions are locked to the tier that applied when activated.</p></div><span class="pill">AUTOMATIC MONTHLY RESET</span></div>
+ <form method="post">
+  <input type="hidden" name="_token" value="<?=e(csrf())?>">
+  <input type="hidden" name="action" value="sales_commission_tier_save">
+  <div class="tier-rate-table">
+   <div class="tier-rate-head"><b>Product</b><b>Standard · Sales 1–10</b><b>Premier · Sale 11+</b></div>
+   <?php $tierMaps=[];foreach($commissionTiers as $ct)$tierMaps[$ct['tier_key']]=$ct['rates'];foreach(salesperson_commission_products() as $key=>$label):?>
+   <div class="tier-rate-row"><span><?=e($label)?></span><label>$<input type="number" min="0" step=".01" name="standard_<?=e($key)?>" value="<?=e(number_format((float)($tierMaps['standard'][$key]??0),2,'.',''))?>"></label><label>$<input type="number" min="0" step=".01" name="premier_<?=e($key)?>" value="<?=e(number_format((float)($tierMaps['premier'][$key]??0),2,'.',''))?>"></label></div>
+   <?php endforeach;?>
+  </div>
+  <button>Save tier rates</button>
+ </form>
+</section>
+<?php endif;?>
 <section class="card"><h2>Create salesperson login</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="salesperson_create"><div class="formgrid"><label>Full name<input name="name" required></label><label>Email<input type="email" name="email" required></label><label>Phone<input name="phone"></label><label>Temporary password<input type="password" name="password" minlength="12" required><small>Minimum 12 characters. Share it securely.</small></label></div><button>Create salesperson</button></form></section>
 <?php if($a['role']==='owner'):?><section class="card section"><div class="row between"><div><span class="eyebrow">BONUS ENGINE</span><h2>Salesperson bonus rules</h2></div><span class="pill">VISIBLE IN SALES PORTAL</span></div><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="sales_bonus_rule_save"><div class="formgrid"><label>Bonus name<input name="name" placeholder="10 activation bonus" required></label><label>Metric<select name="metric"><option value="activations">Activations</option><option value="orders">Orders</option><option value="commission">Commission earned ($)</option></select></label><label>Target<input type="number" step=".01" min="0" name="threshold_value" required></label><label>Bonus amount $<input type="number" step=".01" min="0" name="bonus_amount" required></label></div><button>Create bonus rule</button></form><?php if($bonusRules):?><div class="bonus-admin-list"><?php foreach($bonusRules as $br):?><form method="post" class="bonus-admin-row"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="sales_bonus_rule_toggle"><input type="hidden" name="id" value="<?=$br['id']?>"><div><b><?=e($br['name'])?></b><small><?=e(ucfirst($br['metric']))?> · target <?=number_format((float)$br['threshold_value'],2)?> · $<?=number_format((float)$br['bonus_amount'],2)?></small></div><span class="pill"><?=$br['active']?'ACTIVE':'OFF'?></span><button class="secondary"><?=$br['active']?'Disable':'Enable'?></button></form><?php endforeach;?></div><?php endif;?></section><?php endif;?>
 <div class="salesperson-admin-grid section">
@@ -328,7 +360,7 @@ elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM le
  <div class="service-meta"><span><?=$s['lead_count']?> leads</span><span><?=$s['order_count']?> orders</span></div>
  <?php if($a['role']==='owner'):?>
  <details class="commission-rate-editor" open>
-  <summary>Product commission rates</summary>
+  <summary>Personal commission overrides</summary>
   <form method="post">
    <input type="hidden" name="_token" value="<?=e(csrf())?>">
    <input type="hidden" name="action" value="salesperson_commission_save">
@@ -343,7 +375,7 @@ elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM le
     <?php endforeach;?>
    </div>
    <button>Save <?=e($s['name'])?>'s pay rates</button>
-   <p class="muted">Blank = use the existing global percentage rule. A value, including $0, overrides the global rule for this salesperson/product.</p>
+   <p class="muted">Leave blank to use the automatic Standard/Premier tier rate. Any entered amount overrides both tiers for this salesperson/product only.</p>
   </form>
  </details>
  <?php else:?>
