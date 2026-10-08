@@ -1470,3 +1470,90 @@ body{overflow-x:hidden}
  .pay-rate-grid{grid-template-columns:1fr}
  .sales-pay-rates{padding:18px}
 }
+
+
+/* SecureLink OS V5 */
+.launch-featured{background:linear-gradient(135deg,#071022,#4b286d)!important;color:#fff!important;border-color:transparent!important}
+.launch-featured span{color:#d9d5ec!important}
+.upgrade-hero{display:flex;justify-content:space-between;align-items:end;gap:24px;padding:38px;margin:30px 0 18px;border-radius:30px;background:linear-gradient(135deg,#071022,#17233d 58%,#4b286d);color:#fff;overflow:hidden;position:relative}
+.upgrade-hero h1{font-size:clamp(42px,7vw,76px);letter-spacing:-.06em;margin:8px 0}
+.upgrade-hero p{max-width:700px;color:#d1d8e8}
+.upgrade-current{min-width:210px;text-align:right}
+.upgrade-current small,.upgrade-current span{display:block;color:#aeb9cf}
+.upgrade-current strong{display:block;font-size:48px;letter-spacing:-.05em}
+.current-service-strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;margin:14px 0 22px}
+.current-service-strip article{min-width:180px;padding:16px 18px;border:1px solid #e5e8ef;border-radius:18px;background:#fff}
+.current-service-strip span{display:block;font-size:10px;color:#667085;text-transform:uppercase;font-weight:800}
+.current-service-strip b{font-size:24px}.current-service-strip small{font-size:10px;color:#98a2b3}
+.upgrade-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.upgrade-card{display:flex;flex-direction:column;min-height:330px}
+.upgrade-card .price{font-size:40px;font-weight:900;letter-spacing:-.05em;margin:12px 0}
+.upgrade-card .price small{font-size:11px}
+.upgrade-card .deal-actions{margin-top:auto}
+.upgrade-reason{font-size:9px;font-weight:900;padding:7px 9px;border-radius:999px;background:#ecfdf3;color:#067647;white-space:nowrap}
+
+.email-studio{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);gap:14px;align-items:start}
+.email-composer,.email-preview{padding:26px}
+.email-preview{position:sticky;top:90px}
+.email-preview-body{white-space:pre-wrap;min-height:280px;padding:20px;margin:18px 0;border-radius:18px;background:#f7f8fb;border:1px solid #e4e7ec;line-height:1.65;color:#344054}
+.template-help{font-size:10px;color:#667085;padding:12px 14px;border-radius:12px;background:#f8fafc;margin-bottom:12px}
+.template-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.template-editor{padding:18px;border:1px solid #e4e7ec;border-radius:18px;background:#fff}
+.template-editor label{margin-bottom:10px}
+.new-template{background:#f8fafc}
+.exception-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.exception-kpis article{min-height:125px;display:flex;flex-direction:column;justify-content:space-between}
+.exception-kpis article.attention{border-color:#fecdca;background:#fff8f7}
+.exception-kpis span{font-size:10px;color:#667085;font-weight:800}
+.exception-kpis strong{font-size:34px}
+.exception-layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.exception-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #eaecf0}
+.exception-row small{display:block;color:#667085;margin-top:3px}
+.payroll-agent-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.payroll-agent-grid article{padding:16px;border:1px solid #e4e7ec;border-radius:16px;background:#f8fafc}
+.payroll-agent-grid span,.payroll-agent-grid small{display:block;color:#667085}
+.payroll-agent-grid b{display:block;font-size:26px;margin:6px 0}
+.payroll-agent-grid p{margin:0;font-size:11px}
+
+.sales-v5-top{display:grid;grid-template-columns:1.4fr .6fr;gap:12px;margin:14px 0}
+.earnings-calculator [data-earnings-total]{font-size:38px}
+.earning-product-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:18px 0}
+.earning-product-grid label{display:flex;gap:10px;align-items:center;padding:13px;border:1px solid #e4e7ec;border-radius:14px;background:#fff;cursor:pointer}
+.earning-product-grid label:has(input:checked){border-color:#4b286d;background:#faf7fc}
+.earning-product-grid input{width:auto}
+.earning-product-grid span{font-size:11px}.earning-product-grid b{display:block;font-size:16px;margin-top:3px}
+.earning-product-grid .disabled-rate{opacity:.48;cursor:not-allowed}
+.target-card .target-row{display:flex;justify-content:space-between;padding:13px 0;border-bottom:1px solid #eaecf0}
+.target-row span{color:#667085}.target-row b{font-size:18px}
+.wallet-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0}
+.wallet-kpis div{padding:14px;border:1px solid #e4e7ec;border-radius:14px;background:#f8fafc}
+.wallet-kpis span{display:block;font-size:9px;color:#667085}.wallet-kpis b{display:block;font-size:22px;margin-top:4px}
+.commission-ledger{overflow:hidden}
+
+.activity-timeline{margin-top:18px}
+.activity-timeline-list{display:grid;gap:8px}
+.activity-event{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:14px;border:1px solid #e4e7ec;border-radius:16px;background:#fff}
+.activity-dot{width:10px;height:10px;border-radius:50%;background:#4b286d;box-shadow:0 0 0 5px #f4eff8}
+.activity-event small{color:#667085}
+.activity-event>time{font-size:9px;color:#98a2b3}
+
+@media(max-width:900px){
+ .upgrade-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .exception-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .exception-layout{grid-template-columns:1fr}
+ .payroll-agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .sales-v5-top{grid-template-columns:1fr}
+ .earning-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .email-studio{grid-template-columns:1fr}
+ .email-preview{position:static}
+}
+@media(max-width:600px){
+ .upgrade-hero{align-items:flex-start;flex-direction:column;padding:28px 22px}
+ .upgrade-current{text-align:left;min-width:0}
+ .upgrade-current strong{font-size:40px}
+ .upgrade-grid,.template-admin-grid,.payroll-agent-grid,.earning-product-grid{grid-template-columns:1fr}
+ .email-composer,.email-preview{padding:18px}
+ .exception-kpis{grid-template-columns:1fr 1fr}
+ .activity-event{grid-template-columns:auto 1fr}
+ .activity-event>time{grid-column:2}
+}
