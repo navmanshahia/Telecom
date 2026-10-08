@@ -208,16 +208,20 @@ function queue_order_status_notification(int $orderId,int $actor,string $customM
     queue_notification((int)$o['user_id'],$orderId,null,'Order update · '.$status,$message,$actor,'email',(string)$o['email']);
 }
 function notification_stats(): array {
-    if(db_table_exists('users')){
-        foreach(rows("SELECT id FROM users WHERE email_verified_at IS NOT NULL") as $verified) cancel_verification_messages((int)$verified['id']);
+    $zero=['queued'=>0,'due'=>0,'sent_today'=>0,'logged'=>0,'failed'=>0];
+    if(!db_table_exists('notification_queue')) return $zero;
+    try{
+        return [
+          'queued'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='queued'"),
+          'due'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='queued' AND COALESCE(scheduled_at,created_at,CURRENT_TIMESTAMP)<=datetime('now')"),
+          'sent_today'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='sent' AND sent_at IS NOT NULL AND date(sent_at)=date('now')"),
+          'logged'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='logged'"),
+          'failed'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'")
+        ];
+    }catch(Throwable $e){
+        error_log('SecureLink notification_stats: '.$e->getMessage());
+        return $zero;
     }
-    return [
-      'queued'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='queued'"),
-      'due'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='queued' AND scheduled_at<=datetime('now')"),
-      'sent_today'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='sent' AND date(sent_at)=date('now')"),
-      'logged'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='logged'"),
-      'failed'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'")
-    ];
 }
 function sync_notification_communication(array $n,string $status): void {
     if(!db_table_exists('communications')) return;
@@ -230,8 +234,16 @@ function sync_notification_communication(array $n,string $status): void {
       ->execute([$status,...$params]);
 }
 function cancel_verification_messages(int $userId,string $reason='Email already verified'): void {
-    if(db_table_exists('notification_queue')) db()->prepare("UPDATE notification_queue SET status='cancelled',last_error=? WHERE user_id=? AND status='queued' AND subject='Verify your SecureLink email'")->execute([$reason,$userId]);
-    if(db_table_exists('communications')) db()->prepare("UPDATE communications SET delivery_status='cancelled' WHERE user_id=? AND kind='email' AND delivery_status='queued' AND subject='Verify your SecureLink email'")->execute([$userId]);
+    try{
+        if(db_table_exists('notification_queue') && db_column_exists('notification_queue','user_id') && db_column_exists('notification_queue','last_error')){
+            db()->prepare("UPDATE notification_queue SET status='cancelled',last_error=? WHERE user_id=? AND status='queued' AND subject='Verify your SecureLink email'")->execute([$reason,$userId]);
+        }
+        if(db_table_exists('communications') && db_column_exists('communications','delivery_status')){
+            db()->prepare("UPDATE communications SET delivery_status='cancelled' WHERE user_id=? AND kind='email' AND delivery_status='queued' AND subject='Verify your SecureLink email'")->execute([$userId]);
+        }
+    }catch(Throwable $e){
+        error_log('SecureLink cancel_verification_messages: '.$e->getMessage());
+    }
 }
 function process_notification_queue(int $limit=25): array {
     $limit=max(1,min(100,$limit));$sent=0;$failed=0;$skipped=0;$logged=0;
@@ -373,7 +385,25 @@ function ensure_platform_schema(): void {
     $addColumn('orders','first_contact_at','TEXT');
     $addColumn('orders','commission_amount','REAL NOT NULL DEFAULT 0');
     $addColumn('orders','commission_status',"TEXT NOT NULL DEFAULT 'pending'");
+    $addColumn('notification_queue','user_id','INTEGER');
+    $addColumn('notification_queue','order_id','INTEGER');
+    $addColumn('notification_queue','lead_id','INTEGER');
+    $addColumn('notification_queue','channel',"TEXT NOT NULL DEFAULT 'email'");
     $addColumn('notification_queue','notification_type',"TEXT NOT NULL DEFAULT 'transactional'");
+    $addColumn('notification_queue','recipient','TEXT');
+    $addColumn('notification_queue','subject',"TEXT NOT NULL DEFAULT ''");
+    $addColumn('notification_queue','message',"TEXT NOT NULL DEFAULT ''");
+    $addColumn('notification_queue','status',"TEXT NOT NULL DEFAULT 'queued'");
+    $addColumn('notification_queue','scheduled_at','TEXT');
+    $addColumn('notification_queue','sent_at','TEXT');
+    $addColumn('notification_queue','attempts','INTEGER NOT NULL DEFAULT 0');
+    $addColumn('notification_queue','last_error','TEXT');
+    $addColumn('notification_queue','created_by','INTEGER');
+    $addColumn('notification_queue','created_at','TEXT');
+    $addColumn('communications','delivery_status',"TEXT NOT NULL DEFAULT 'logged'");
+    $addColumn('communications','subject','TEXT');
+    $addColumn('communications','visibility',"TEXT NOT NULL DEFAULT 'internal'");
+    $addColumn('communications','created_by','INTEGER');
     $addColumn('referrals','referrer_user_id','INTEGER');
     $addColumn('referrals','customer_user_id','INTEGER');
     $addColumn('referrals','admin_notes','TEXT');
