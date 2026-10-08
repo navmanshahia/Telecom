@@ -1123,7 +1123,7 @@ function sales_quote_templates(int $userId): array {
     return rows("SELECT * FROM quote_templates WHERE active=1 AND (created_by=? OR created_by IS NULL) ORDER BY id DESC",[$userId]);
 }
 function sales_commission_forecast(array $u): array {
-    $name=(string)$u['name'];$uid=(int)$u['id'];$rates=salesperson_commission_rates($uid);
+    $name=(string)$u['name'];$uid=(int)$u['id'];$rates=salesperson_effective_commission_rates($u);$tier=salesperson_current_tier($u);
     $openOrders=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE lower(sales_agent)=lower(?) AND status IN ('pending','hold','approved')",[$name]);
     $approved=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE lower(sales_agent)=lower(?) AND status='approved'",[$name]);
     $quotePotential=0.0;
@@ -1132,10 +1132,10 @@ function sales_commission_forecast(array $u): array {
             $key=strtolower(trim((string)$d['category']));$key=str_replace([' ','-'],'_',$key);
             if(in_array($key,['home_phone','homephone'],true))$key='homephone';
             if($key==='mobility')$key=str_contains(strtolower((string)$d['provider'].' '.(string)$d['name']),'koodo')?'koodo_mobility':'telus_mobility';
-            if(isset($rates[$key])&&$rates[$key]['configured'])$quotePotential+=(float)$rates[$key]['amount'];
+            if(isset($rates[$key]))$quotePotential+=(float)$rates[$key]['amount'];
         }
     }
-    return ['approved'=>$approved,'open_orders'=>$openOrders,'quote_potential'=>$quotePotential,'total_expected'=>$openOrders+$quotePotential];
+    return ['approved'=>$approved,'open_orders'=>$openOrders,'quote_potential'=>$quotePotential,'total_expected'=>$openOrders+$quotePotential,'tier'=>$tier];
 }
 function sales_bonus_progress(array $u): array {
     $name=(string)$u['name'];$monthOrders=(int)scalar("SELECT COUNT(*) FROM orders WHERE lower(sales_agent)=lower(?) AND created_at>=datetime('now','start of month')",[$name]);$activations=(int)scalar("SELECT COUNT(*) FROM orders WHERE lower(sales_agent)=lower(?) AND status IN ('activated','completed') AND created_at>=datetime('now','start of month')",[$name]);$commission=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE lower(sales_agent)=lower(?) AND earned_at>=datetime('now','start of month')",[$name]);
