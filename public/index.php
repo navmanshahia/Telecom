@@ -189,6 +189,8 @@ if($page==='sales-customer'){
       $used=(int)scalar("SELECT COUNT(*) FROM users WHERE lower(email)=lower(?) AND id<>?",[$email,$cid]);if($used)throw new RuntimeException('That email is already used by another account.');
       db()->prepare("UPDATE users SET name=?,email=?,phone=? WHERE id=?")->execute([$name,$email,$phone,$cid]);
       db()->prepare("INSERT INTO customer_profiles(user_id,service_address,updated_at) VALUES(?,?,datetime('now')) ON CONFLICT(user_id) DO UPDATE SET service_address=excluded.service_address,updated_at=datetime('now')")->execute([$cid,$address]);
+      db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id IS NULL AND check_key='contact'")->execute([(int)$u['id'],$cid]);
+      if($address!=='')db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id IS NULL AND check_key='address'")->execute([(int)$u['id'],$cid]);
       audit((int)$u['id'],'sales_customer_profile_update','user',$cid);
     }elseif($act==='identity_upload'){
       sales_document_store($u,$cid,$_FILES['identity_document']??[],(string)($_POST['id_type']??'drivers_licence'),(string)($_POST['id_number']??''));
@@ -205,7 +207,7 @@ if($page==='sales-customer'){
  }
  $customerProfile=rows("SELECT * FROM customer_profiles WHERE user_id=? LIMIT 1",[$cid])[0]??[];$genericChecklist=rows("SELECT * FROM application_checklists WHERE user_id=? AND order_id IS NULL ORDER BY id",[$cid]);$deals=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' AND p.status='active' ORDER BY p.name,d.category,d.monthly_price");layout_start('Customer 360');?>
  <section class="sales-c360-hero card"><div><span class="eyebrow">CUSTOMER 360 · SALES V6</span><h1><?=e($cu['name'])?></h1><p><?=e($cu['email'])?> · <?=e($cu['phone'])?></p><span class="pill"><?=e(strtoupper($cu['status']))?></span></div><div class="c360-kpis"><b><?=count($profile['orders'])?><small>Orders</small></b><b><?=count($profile['quotes'])?><small>Quotes</small></b><b><?=count($profile['documents'])?><small>Docs</small></b></div></section>
- <nav class="quick-contact-bar"><a href="tel:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Call</a><a href="mailto:<?=e($cu['email'])?>">Email app</a><a href="<?=e(url('?page=sales-email&customer_id='.$cid))?>">Sales Email</a><a href="<?=e(url('?page=sales-quotes&customer_id='.$cid))?>">Build Quote</a><a href="<?=e(url('?page=sales-offers&customer_id='.$cid))?>">Send Offer</a></nav>
+ <nav class="quick-contact-bar"><a href="tel:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Call</a><a href="sms:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Text</a><a href="mailto:<?=e($cu['email'])?>">Email app</a><a href="<?=e(url('?page=sales-email&customer_id='.$cid))?>">Sales Email</a><a href="<?=e(url('?page=sales-quotes&customer_id='.$cid))?>">Build Quote</a><a href="<?=e(url('?page=sales-offers&customer_id='.$cid))?>">Send Offer</a></nav>
  <?php if(isset($err)):?><p class="alert"><?=e($err)?></p><?php endif;?>
  <div class="sales-c360-grid">
   <section class="card"><span class="eyebrow">CUSTOMER DATA</span><h2>Profile</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="profile_save"><input type="hidden" name="customer_id" value="<?=$cid?>"><label>Name<input name="name" value="<?=e($cu['name'])?>" required></label><label>Email<input type="email" name="email" value="<?=e($cu['email'])?>" required></label><label>Phone<input name="phone" value="<?=e($cu['phone'])?>" required></label><label>Service address<input name="address" value="<?=e($customerProfile['service_address']??'')?>"></label><button>Save profile</button></form></section>
@@ -317,7 +319,7 @@ if($page==='sales'){
 ?>
 <?php if(!empty($_SESSION['sales_flash'])):?><p class="alert success"><?=e($_SESSION['sales_flash']);unset($_SESSION['sales_flash'])?></p><?php endif;?>
 <section class="sales-hero">
- <div><span class="eyebrow">SALESPERSON OS · V5</span><h1><?=e(explode(' ',trim($u['name']))[0])?>’s desk.</h1><p>Lead → quote → order → activation → payout.</p><a class="button secondary" href="<?=e(url('?page=sales-customer-create'))?>">Convert lead to customer</a></div>
+ <div><span class="eyebrow">SALESPERSON OS · V6</span><h1><?=e(explode(' ',trim($u['name']))[0])?>’s desk.</h1><p>Lead → quote → order → activation → payout.</p><a class="button secondary" href="<?=e(url('?page=sales-customer-create'))?>">Convert lead to customer</a></div>
  <strong>$<?=number_format($d['commission'],2)?><small>tracked salesperson pay</small></strong>
 </section>
 <section class="sales-v6-launch">
