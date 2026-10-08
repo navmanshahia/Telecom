@@ -1044,7 +1044,12 @@ function sales_application_checklist_seed(int $userId,?int $orderId=null): void 
       'consent'=>'Customer consent to submit confirmed',
       'provider'=>'Ready for provider processing'
     ];
-    foreach($items as $key=>$label) db()->prepare("INSERT OR IGNORE INTO application_checklists(user_id,order_id,check_key,label) VALUES(?,?,?,?)")->execute([$userId,$orderId,$key,$label]);
+    foreach($items as $key=>$label){
+        $exists=$orderId===null
+          ?(int)scalar("SELECT COUNT(*) FROM application_checklists WHERE user_id=? AND order_id IS NULL AND check_key=?",[$userId,$key])
+          :(int)scalar("SELECT COUNT(*) FROM application_checklists WHERE user_id=? AND order_id=? AND check_key=?",[$userId,$orderId,$key]);
+        if(!$exists) db()->prepare("INSERT INTO application_checklists(user_id,order_id,check_key,label) VALUES(?,?,?,?)")->execute([$userId,$orderId,$key,$label]);
+    }
 }
 function sales_quote_templates(int $userId): array {
     return rows("SELECT * FROM quote_templates WHERE active=1 AND (created_by=? OR created_by IS NULL) ORDER BY id DESC",[$userId]);
@@ -1080,6 +1085,78 @@ function sales_search(array $u,string $q): array {
 }
 function sales_scripts(): array { return rows("SELECT * FROM sales_scripts WHERE active=1 ORDER BY display_order,title"); }
 function sales_masked_identity(int $userId): array { return rows("SELECT id,id_type,id_last4,document_id,status,created_at FROM customer_identity_records WHERE user_id=? ORDER BY id DESC",[$userId]); }
+
+function sales_customer_create_or_link(array $salesperson,string $name,string $email,string $phone,string $address=''): int {
+    $name=trim($name);$email=strtolower(trim($email));$phone=trim($phone);$address=trim($address);
+    if($name===''||!filter_var($email,FILTER_VALIDATE_EMAIL)||$phone==='') throw new RuntimeException('Name, valid email and phone are required.');
+    $existing=rows("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1",[$email])[0]??null;
+    if($existing && $existing['role']!=='customer') throw new RuntimeException('That email belongs to a non-customer account.');
+    if($existing){$uid=(int)$existing['id'];db()->prepare("UPDATE users SET name=?,phone=? WHERE id=?")->execute([$name,$phone,$uid]);}
+    else{
+        $temp=bin2hex(random_bytes(18));
+        db()->prepare("INSERT INTO users(name,email,phone,password_hash,role,status) VALUES(?,?,?,?, 'customer','pending')")->execute([$name,$email,$phone,password_hash($temp,PASSWORD_DEFAULT)]);
+        $uid=(int)db()->lastInsertId();issue_email_verification($uid);
+    }
+    sales_assign_customer($uid,(int)$salesperson['id']);
+    db()->prepare("INSERT INTO customer_profiles(user_id,service_address,updated_at) VALUES(?,?,datetime('now')) ON CONFLICT(user_id) DO UPDATE SET service_address=CASE WHEN excluded.service_address<>'' THEN excluded.service_address ELSE customer_profiles.service_address END,updated_at=datetime('now')")->execute([$uid,$address]);
+    sales_application_checklist_seed($uid,null);
+    audit((int)$salesperson['id'],'sales_customer_create_or_link','user',$uid,['email'=>$email]);
+    return $uid;
+}
+function sales_customer_order_submit(array $salesperson,int $userId,int $dealId,string $address,bool $consent): int {
+    if(!salesperson_can_access_customer($salesperson,$userId)) throw new RuntimeException('Customer access denied.');
+    if(!$consent) throw new RuntimeException('Customer consent must be confirmed before submission.');
+    $cu=rows("SELECT * FROM users WHERE id=? AND role='customer' LIMIT 1",[$userId])[0]??null;if(!$cu)throw new RuntimeException('Customer not found.');
+    $deal=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.id=? AND d.status='active' AND p.status='active' LIMIT 1",[$dealId])[0]??null;if(!$deal)throw new RuntimeException('Offer is unavailable.');
+    $profile=rows("SELECT * FROM customer_profiles WHERE user_id=? LIMIT 1",[$userId])[0]??[];
+    $serviceAddress=trim($address)!==''?trim($address):trim((string)($profile['service_address']??''));
+    if($serviceAddress==='') throw new RuntimeException('Service address is required before submitting an order.');
+    $identity=rows("SELECT * FROM customer_identity_records WHERE user_id=? AND status IN ('received','approved') ORDER BY id DESC LIMIT 1",[$userId])[0]??null;
+    $public='SL-'.date('ymd').'-'.strtoupper(bin2hex(random_bytes(3)));
+    db()->prepare("INSERT INTO orders(public_id,user_id,deal_id,provider_id,category,status,deal_snapshot,sales_agent,contact_email,contact_phone,service_address,id_type,id_value_encrypted,commission_amount,commission_status) VALUES(?,?,?,?,?,'submitted',?,?,?,?,?,?,?,?,'pending')")
+      ->execute([$public,$userId,(int)$deal['id'],(int)$deal['provider_id'],$deal['category'],json_encode($deal,JSON_UNESCAPED_SLASHES),(string)$salesperson['name'],(string)$cu['email'],(string)$cu['phone'],$serviceAddress,$identity['id_type']??'', $identity['id_number_encrypted']??null,commission_rule_amount((int)$deal['provider_id'],(string)$deal['category'])]);
+    $oid=(int)db()->lastInsertId();sync_order_items($oid);sync_commission_ledger($oid);sales_application_checklist_seed($userId,$oid);
+    foreach(['contact','address','offer','consent'] as $key) db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id=? AND check_key=?")->execute([(int)$salesperson['id'],$userId,$oid,$key]);
+    if($identity)db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id=? AND check_key='identity'")->execute([(int)$salesperson['id'],$userId,$oid]);
+    create_task('Process salesperson order','order',$oid,null,'high',date('Y-m-d H:i:s'),'Submitted by '.(string)$salesperson['name'].' for '.$cu['name'].', review application checklist and process provider order.',(int)$salesperson['id']);
+    audit((int)$salesperson['id'],'sales_order_submit','order',$oid,['customer_id'=>$userId,'deal_id'=>$dealId]);
+    return $oid;
+}
+function sales_quote_send(array $salesperson,int $userId,array $dealIds,string $notes=''): string {
+    if(!salesperson_can_access_customer($salesperson,$userId)) throw new RuntimeException('Customer access denied.');
+    $cu=rows("SELECT * FROM users WHERE id=? AND role='customer' LIMIT 1",[$userId])[0]??null;if(!$cu)throw new RuntimeException('Customer not found.');
+    $public=quote_create(['user_id'=>$userId,'customer_name'=>$cu['name'],'customer_email'=>$cu['email'],'customer_phone'=>$cu['phone'],'deal_ids'=>$dealIds,'notes'=>$notes],(int)$salesperson['id']);
+    $link=app_absolute_url('?page=quote&id='.rawurlencode($public));
+    send_customer_email_v5($userId,'Your SecureLink quote · '.$public,"Hi ".(explode(' ',trim((string)$cu['name']))[0]?:'there').",\n\nI prepared your SecureLink quote. You can review the plans, monthly pricing and credits here:\n".$link."\n\nIf you want any changes, reply to this email or use the quote page.\n\nSecureLink",(int)$salesperson['id'],'sales_quote');
+    audit((int)$salesperson['id'],'sales_quote_send','quote',null,['public_id'=>$public,'customer_id'=>$userId]);
+    return $public;
+}
+function sales_offer_send(array $salesperson,int $userId,int $dealId,string $customMessage=''): int {
+    if(!salesperson_can_access_customer($salesperson,$userId)) throw new RuntimeException('Customer access denied.');
+    $cu=rows("SELECT * FROM users WHERE id=? LIMIT 1",[$userId])[0]??null;$d=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.id=? AND d.status='active' LIMIT 1",[$dealId])[0]??null;
+    if(!$cu||!$d)throw new RuntimeException('Customer or offer not found.');
+    $first=explode(' ',trim((string)$cu['name']))[0]?:'there';
+    $message="Hi ".$first.",\n\nHere is an offer I selected for you:\n\n".$d['provider']." · ".$d['name']."\n$".number_format((float)$d['monthly_price'],2)."/month".(!empty($d['speed_data'])?"\n".$d['speed_data']:'')."\n";
+    if(trim($customMessage)!=='')$message.="\n".trim($customMessage)."\n";
+    $message.="\nReview current SecureLink offers here:\n".app_absolute_url('?page=deals')."\n\nReply anytime if you want me to build a full quote.";
+    return send_customer_email_v5($userId,'SecureLink offer · '.$d['provider'].' '.$d['name'],$message,(int)$salesperson['id'],'sales_offer');
+}
+function sales_document_store(array $actor,int $userId,array $file,string $idType,string $idNumber=''): int {
+    if(!salesperson_can_access_customer($actor,$userId) && !in_array($actor['role'],['owner','admin'],true)) throw new RuntimeException('Customer access denied.');
+    if(empty($file['tmp_name'])||!is_uploaded_file($file['tmp_name'])) throw new RuntimeException('Choose a PDF, JPG or PNG document.');
+    if((int)$file['size']>8*1024*1024) throw new RuntimeException('Document must be 8 MB or smaller.');
+    $allowed=['application/pdf'=>'pdf','image/jpeg'=>'jpg','image/png'=>'png'];$mime=(new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+    if(!isset($allowed[$mime])) throw new RuntimeException('Only PDF, JPG and PNG files are allowed.');
+    $dir=dirname(__DIR__).'/storage/documents/'.$userId;if(!is_dir($dir)&&!mkdir($dir,0770,true))throw new RuntimeException('Could not create secure document folder.');
+    $filename=bin2hex(random_bytes(16)).'.'.$allowed[$mime];$path=$dir.'/'.$filename;if(!move_uploaded_file($file['tmp_name'],$path))throw new RuntimeException('Document upload failed.');
+    $label=match($idType){'drivers_licence'=>"Driver's Licence",'provincial_id'=>'Provincial ID',default=>'Identity Document'};
+    db()->prepare("INSERT INTO documents(user_id,document_type,label,status,storage_path,original_name) VALUES(?,?,?,'received',?,?)")->execute([$userId,$idType,$label,$path,basename((string)$file['name'])]);$did=(int)db()->lastInsertId();
+    $number=trim($idNumber);$last4=$number!==''?substr(preg_replace('/\s+/','',$number),-4):'';
+    db()->prepare("INSERT INTO customer_identity_records(user_id,id_type,id_number_encrypted,id_last4,document_id,status,created_by) VALUES(?,?,?,?,?,'received',?)")->execute([$userId,$idType,$number!==''?encrypt_secret($number):null,$last4,$did,(int)$actor['id']]);
+    db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND check_key='identity' AND status!='complete'")->execute([(int)$actor['id'],$userId]);
+    audit((int)$actor['id'],'sales_identity_upload','document',$did,['customer_id'=>$userId,'id_type'=>$idType]);
+    return $did;
+}
 
 function customer_upgrade_recommendations(int $userId,int $limit=12): array {
     $services=customer_savings($userId)['services'];
