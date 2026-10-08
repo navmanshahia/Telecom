@@ -27,7 +27,45 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  if($act==='referral_add'){ $refUid=(int)($_POST['referrer_user_id']??0)?:null;$cusUid=(int)($_POST['customer_user_id']??0)?:null;$refName=trim($_POST['referred_by']??'');$cusName=trim($_POST['referred_customer']??'');if($refUid)$refName=(string)(scalar("SELECT name FROM users WHERE id=?",[$refUid])?:$refName);if($cusUid)$cusName=(string)(scalar("SELECT name FROM users WHERE id=?",[$cusUid])?:$cusName);if($refName===''||$cusName==='')exit('Referrer and customer are required.');db()->prepare("INSERT INTO referrals(order_id,referred_by,referred_customer,reward_amount,status,referrer_user_id,customer_user_id,admin_notes,customer_notes,updated_at) VALUES(?,?,?,?,?,?,?,?,?,datetime('now'))")->execute([(int)($_POST['order_id']??0)?:null,$refName,$cusName,max(0,(float)($_POST['reward_amount']??0)),'pending',$refUid,$cusUid,trim($_POST['admin_notes']??''),trim($_POST['customer_notes']??'')]);audit((int)$a['id'],'referral_add','referral',(int)db()->lastInsertId());}
  if($act==='customer_service_admin_save'){ $uid=(int)($_POST['user_id']??0);$sid=(int)($_POST['service_id']??0);$vals=[trim($_POST['provider']??''),trim($_POST['service_type']??''),trim($_POST['account_number']??''),trim($_POST['cid']??''),trim($_POST['account_name']??''),trim($_POST['service_address']??''),trim($_POST['service_email']??''),trim($_POST['service_phone']??'')];if($sid)db()->prepare("UPDATE customer_service_accounts SET provider=?,service_type=?,account_number=?,cid=?,account_name=?,service_address=?,email=?,phone=?,updated_at=datetime('now') WHERE id=? AND user_id=?")->execute([...$vals,$sid,$uid]);else db()->prepare("INSERT INTO customer_service_accounts(user_id,provider,service_type,account_number,cid,account_name,service_address,email,phone) VALUES(?,?,?,?,?,?,?,?,?)")->execute([$uid,...$vals]);audit((int)$a['id'],'customer_service_admin_save','user',$uid);}
  if($act==='promotion_send'){ $uid=(int)($_POST['user_id']??0);$promoId=(int)($_POST['promotion_id']??0);$cu=rows("SELECT * FROM users WHERE id=? AND role='customer' LIMIT 1",[$uid])[0]??null;$pr=rows("SELECT pr.*,p.name provider FROM promotions pr LEFT JOIN providers p ON p.id=pr.provider_id WHERE pr.id=? LIMIT 1",[$promoId])[0]??null;if($cu&&$pr){$subject='SecureLink offer · '.$pr['name'];$message="Hi ".$cu['name'].",\n\n".$pr['name'].($pr['provider']?" from ".$pr['provider']:"")." is currently available through SecureLink.\n\nSign in to your SecureLink account to review current offers and eligibility.";queue_notification($uid,null,null,$subject,$message,(int)$a['id'],'email',(string)$cu['email'],null,'promotion');log_comm($uid,null,null,'email','customer',$subject,$message,(int)$a['id']);audit((int)$a['id'],'promotion_send','promotion',$promoId,['user_id'=>$uid]);}}
- if($act==='salesperson_create'){if(!in_array($a['role'],['owner','admin'],true)){http_response_code(403);exit('Owner/admin required.');}$name=trim($_POST['name']??'');$email=strtolower(trim($_POST['email']??''));$phone=trim($_POST['phone']??'');$password=(string)($_POST['password']??'');if($name===''||!filter_var($email,FILTER_VALIDATE_EMAIL)||strlen($password)<12){$_SESSION['admin_flash']='Salesperson requires a name, valid email and password of at least 12 characters.';}elseif((int)scalar("SELECT COUNT(*) FROM users WHERE lower(email)=lower(?)",[$email])>0){$_SESSION['admin_flash']='That email is already in use.';}else{$hash=password_hash($password,PASSWORD_DEFAULT);db()->prepare("INSERT INTO users(name,email,phone,password_hash,role,status,approved_at,email_verified_at) VALUES(?,?,?,?, 'salesperson','approved',datetime('now'),datetime('now'))")->execute([$name,$email,$phone,$hash]);$sid=(int)db()->lastInsertId();audit((int)$a['id'],'salesperson_create','user',$sid,['email'=>$email]);$_SESSION['admin_flash']='Salesperson account created.';}}
+ if($act==='salesperson_create'){
+  if(!in_array($a['role'],['owner','admin'],true)){http_response_code(403);exit('Owner/admin required.');}
+  $name=trim($_POST['name']??'');$email=strtolower(trim($_POST['email']??''));$phone=trim($_POST['phone']??'');$password=(string)($_POST['password']??'');
+  if($name===''){
+    $_SESSION['admin_flash']='Could not create salesperson: full name is required.';
+    $_SESSION['admin_flash_type']='error';
+  }elseif(!filter_var($email,FILTER_VALIDATE_EMAIL)){
+    $_SESSION['admin_flash']='Could not create salesperson: enter a valid email address.';
+    $_SESSION['admin_flash_type']='error';
+  }elseif(strlen($password)<12){
+    $_SESSION['admin_flash']='Could not create salesperson: temporary password must be at least 12 characters.';
+    $_SESSION['admin_flash_type']='error';
+  }elseif((int)scalar("SELECT COUNT(*) FROM users WHERE lower(email)=lower(?)",[$email])>0){
+    $existing=rows("SELECT role,status FROM users WHERE lower(email)=lower(?) LIMIT 1",[$email])[0]??[];
+    $_SESSION['admin_flash']='Could not create salesperson: that email is already used by an existing '.($existing['role']??'user').' account'.(!empty($existing['status'])?' ('.$existing['status'].')':'').'.';
+    $_SESSION['admin_flash_type']='error';
+  }else{
+    try{
+      db()->beginTransaction();
+      $hash=password_hash($password,PASSWORD_DEFAULT);
+      $st=db()->prepare("INSERT INTO users(name,email,phone,password_hash,role,status,approved_at,email_verified_at) VALUES(?,?,?,?, 'salesperson','approved',datetime('now'),datetime('now'))");
+      $st->execute([$name,$email,$phone,$hash]);
+      $sid=(int)db()->lastInsertId();
+      db()->prepare("INSERT OR IGNORE INTO salesperson_profiles(user_id,display_name,active,commission_percent) VALUES(?,?,1,0)")->execute([$sid,$name]);
+      $created=rows("SELECT id,name,email,role,status FROM users WHERE id=? AND role='salesperson' LIMIT 1",[$sid])[0]??null;
+      if(!$created) throw new RuntimeException('Salesperson row could not be confirmed after insert.');
+      db()->commit();
+      audit((int)$a['id'],'salesperson_create','user',$sid,['email'=>$email]);
+      $_SESSION['admin_flash']='Salesperson account created: '.$created['name'].' ('.$created['email'].').';
+      $_SESSION['admin_flash_type']='success';
+    }catch(Throwable $ex){
+      if(db()->inTransaction()) db()->rollBack();
+      error_log('SecureLink salesperson_create: '.$ex->getMessage());
+      $_SESSION['admin_flash']='Could not create salesperson. Database error: '.$ex->getMessage();
+      $_SESSION['admin_flash_type']='error';
+    }
+  }
+  redirect(url('?page=admin&view=salespeople'));
+ }
  if($act==='salesperson_update'){if(!in_array($a['role'],['owner','admin'],true)){http_response_code(403);exit('Owner/admin required.');}$target=rows("SELECT * FROM users WHERE id=? AND role='salesperson' LIMIT 1",[$id])[0]??null;if($target){$status=in_array($_POST['status']??'approved',['approved','suspended','blocked'],true)?$_POST['status']:'approved';db()->prepare("UPDATE users SET name=?,email=?,phone=?,status=? WHERE id=?")->execute([trim($_POST['name']??$target['name']),strtolower(trim($_POST['email']??$target['email'])),trim($_POST['phone']??''),$status,$id]);$pw=(string)($_POST['new_password']??'');if($pw!==''){if(strlen($pw)<12){$_SESSION['admin_flash']='New password must be at least 12 characters.';}else db()->prepare("UPDATE users SET password_hash=? WHERE id=?")->execute([password_hash($pw,PASSWORD_DEFAULT),$id]);}audit((int)$a['id'],'salesperson_update','user',$id,['status'=>$status]);}}
  if($act==='salesperson_commission_save'){
   if($a['role']!=='owner'){http_response_code(403);exit('Owner access required.');}
@@ -157,6 +195,7 @@ elseif($view==='salescontrol'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM l
 <div class="pagehead"><div><span class="eyebrow">SALES CONTROL CENTRE</span><h1>Team pipeline & assignment.</h1><p class="muted">Control ownership, follow-ups, orders, activations and commission from one screen.</p></div></div><div class="account-kpis"><?php foreach($staff as $s):?><article class="card"><span><?=e($s['name'])?></span><strong><?=$s['activations']?> activations</strong><small><?=$s['leads']?> leads · <?=$s['followups']?> due · <?=$s['month_orders']?> orders · $<?=number_format((float)$s['commission'],0)?> open commission</small></article><?php endforeach;?></div><section class="card section"><h2>Unassigned lead inbox</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="lead_bulk_assign"><label>Assign selected to<select name="salesperson_id"><option value="">Unassigned</option><?php foreach($staff as $s):?><option value="<?=$s['id']?>"><?=e($s['name'])?></option><?php endforeach;?></select></label><?php foreach($unassigned as $l):?><label class="sales-row"><input type="checkbox" name="lead_ids[]" value="<?=$l['id']?>"><span><b><?=e($l['name'])?></b> · <?=e($l['email']?:$l['phone'])?> · score <?=$l['lead_score']?></span></label><?php endforeach;if(!$unassigned):?><p class="muted">No unassigned leads.</p><?php endif;?><button>Assign selected leads</button></form></section><?php }
 elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name)) lead_count,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name)) order_count,(SELECT COALESCE(SUM(cl.salesperson_amount),0) FROM commission_ledger cl WHERE lower(cl.sales_agent)=lower(u.name) AND cl.status IN ('pending','hold','approved','paid')) salesperson_commission FROM users u WHERE u.role='salesperson' ORDER BY u.name");?>
 <div class="pagehead"><div><span class="eyebrow">SALES TEAM</span><h1>Salesperson accounts & pay rates.</h1><p class="muted">Create logins, control access and set a different fixed payout for every salesperson and product type.</p></div><a class="button secondary" href="<?=e(url('?page=sales'))?>">Open sales portal</a></div>
+<?php if(!empty($_SESSION['admin_flash'])):$flashType=$_SESSION['admin_flash_type']??'success';?><div class="alert <?=$flashType==='error'?'error':'success'?>"><?=e($_SESSION['admin_flash']);unset($_SESSION['admin_flash'],$_SESSION['admin_flash_type'])?></div><?php endif;?>
 <section class="card"><h2>Create salesperson login</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="salesperson_create"><div class="formgrid"><label>Full name<input name="name" required></label><label>Email<input type="email" name="email" required></label><label>Phone<input name="phone"></label><label>Temporary password<input type="password" name="password" minlength="12" required><small>Minimum 12 characters. Share it securely.</small></label></div><button>Create salesperson</button></form></section>
 <div class="salesperson-admin-grid section">
 <?php foreach($staff as $s):$rates=salesperson_commission_rates((int)$s['id']);?>
