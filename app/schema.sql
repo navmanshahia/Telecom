@@ -156,7 +156,13 @@ CREATE TABLE IF NOT EXISTS sales_bonus_rules(
 );
 
 
-CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id));
+CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,commission_tier TEXT,commission_rate REAL,activation_sequence INTEGER,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id));
+CREATE TABLE IF NOT EXISTS sales_commission_tiers(tier_key TEXT PRIMARY KEY,name TEXT NOT NULL,min_prior_activations INTEGER NOT NULL DEFAULT 0,display_order INTEGER NOT NULL DEFAULT 100,active INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS sales_commission_tier_rates(tier_key TEXT NOT NULL REFERENCES sales_commission_tiers(tier_key) ON DELETE CASCADE,product_key TEXT NOT NULL,amount REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(tier_key,product_key));
+INSERT OR IGNORE INTO sales_commission_tiers(tier_key,name,min_prior_activations,display_order,active) VALUES ('standard','Standard',0,10,1),('premier','Premier',10,20,1);
+INSERT OR IGNORE INTO sales_commission_tier_rates(tier_key,product_key,amount) VALUES
+('standard','internet',70),('standard','security',70),('standard','tv',70),('standard','homephone',12),('standard','telus_mobility',60),('standard','koodo_mobility',35),
+('premier','internet',80),('premier','security',80),('premier','tv',80),('premier','homephone',15),('premier','telus_mobility',70),('premier','koodo_mobility',40);
 CREATE INDEX IF NOT EXISTS idx_commission_ledger_status ON commission_ledger(status,sales_agent);
 CREATE TABLE IF NOT EXISTS bundle_carts(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,deal_ids_json TEXT NOT NULL DEFAULT '[]',status TEXT NOT NULL DEFAULT 'active',monthly_total REAL NOT NULL DEFAULT 0,credits_total REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX IF NOT EXISTS idx_bundle_carts_user ON bundle_carts(user_id,status);
