@@ -185,11 +185,13 @@ if($page==='sales'){
  $cv3=salesperson_commission_v3((string)$u['name']);
  $salesDeals=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' ORDER BY p.name,d.category,d.monthly_price");
  $payRates=$u['role']==='salesperson'?salesperson_commission_rates((int)$u['id']):[];
+ $salesLedger=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id WHERE lower(cl.sales_agent)=lower(?) ORDER BY cl.id DESC LIMIT 40",[(string)$u['name']]);
+ $target=rows("SELECT * FROM sales_targets WHERE lower(sales_agent)=lower(?) AND period=? LIMIT 1",[(string)$u['name'],date('Y-m')])[0]??[];
  layout_start('Sales portal');
 ?>
 <?php if(!empty($_SESSION['sales_flash'])):?><p class="alert success"><?=e($_SESSION['sales_flash']);unset($_SESSION['sales_flash'])?></p><?php endif;?>
 <section class="sales-hero">
- <div><span class="eyebrow">SALESPERSON PORTAL · V3</span><h1><?=e(explode(' ',trim($u['name']))[0])?>’s desk.</h1><p>Lead → quote → order → activation → payout.</p><a class="button secondary" href="<?=e(url('?page=sales-customer-create'))?>">Convert lead to customer</a></div>
+ <div><span class="eyebrow">SALESPERSON OS · V5</span><h1><?=e(explode(' ',trim($u['name']))[0])?>’s desk.</h1><p>Lead → quote → order → activation → payout.</p><a class="button secondary" href="<?=e(url('?page=sales-customer-create'))?>">Convert lead to customer</a></div>
  <strong>$<?=number_format($d['commission'],2)?><small>tracked salesperson pay</small></strong>
 </section>
 
@@ -213,6 +215,24 @@ if($page==='sales'){
   <?php endforeach;?>
  </div>
 </section>
+<?php endif;?>
+
+<?php if($u['role']==='salesperson'):?>
+<div class="sales-v5-top">
+ <section class="card earnings-calculator">
+  <div class="row between"><div><span class="eyebrow">EARNINGS CALCULATOR</span><h2>What would this sale pay me?</h2></div><strong data-earnings-total>$0.00</strong></div>
+  <div class="earning-product-grid"><?php foreach($payRates as $rate):?><label class="<?=$rate['configured']?'':'disabled-rate'?>"><input type="checkbox" data-earning-amount="<?=number_format((float)$rate['amount'],2,'.','')?>" <?=$rate['configured']?'':'disabled'?>> <span><?=e($rate['label'])?><b><?=$rate['configured']?'$'.number_format((float)$rate['amount'],2):'Not set'?></b></span></label><?php endforeach;?></div>
+  <small>Select the products in a possible sale. This uses your personal rates set by the owner.</small>
+ </section>
+ <section class="card target-card">
+  <span class="eyebrow">THIS MONTH</span><h2>My targets</h2>
+  <?php $to=(int)($target['target_orders']??0);$ta=(int)($target['target_activations']??0);$tc=(float)($target['target_commission']??0);?>
+  <div class="target-row"><span>Orders</span><b><?=$d['monthOrders']?><?=$to?' / '.$to:''?></b></div>
+  <div class="target-row"><span>Activations</span><b><?=$d['activated']?><?=$ta?' / '.$ta:''?></b></div>
+  <div class="target-row"><span>Commission</span><b>$<?=number_format($d['commission'],0)?><?=$tc?' / $'.number_format($tc,0):''?></b></div>
+  <?php if(!$to&&!$ta&&!$tc):?><p class="muted">No monthly target has been assigned yet.</p><?php endif;?>
+ </section>
+</div>
 <?php endif;?>
 
 <div class="sales-grid">
@@ -249,14 +269,10 @@ if($page==='sales'){
   <?php endforeach;if(!$d['leads']):?><p class="muted">No leads assigned to you yet.</p><?php endif;?>
  </section>
 
- <section class="card">
-  <h2>Commission Centre · 90-Day Protection</h2>
-  <p>At risk / 90-day hold <b>$<?=number_format($cv3['risk'],2)?></b></p>
-  <p>Protected <b>$<?=number_format($cv3['protected'],2)?></b></p>
-  <p>Open clawbacks <b>−$<?=number_format($cv3['clawbacks'],2)?></b></p>
-  <p>Net payable <b>$<?=number_format($cv3['payable'],2)?></b></p>
-  <hr>
-  <p>Pending <b>$<?=number_format($d['pending'],2)?></b> · Approved <b>$<?=number_format($d['approved'],2)?></b> · Paid <b>$<?=number_format($d['paid'],2)?></b></p>
+ <section class="card commission-wallet">
+  <span class="eyebrow">COMMISSION WALLET · OS V5</span><h2>Every dollar, tied to an order.</h2>
+  <div class="wallet-kpis"><div><span>Pending</span><b>$<?=number_format($d['pending'],2)?></b></div><div><span>Approved</span><b>$<?=number_format($d['approved'],2)?></b></div><div><span>Paid</span><b>$<?=number_format($d['paid'],2)?></b></div><div><span>Net payable</span><b>$<?=number_format($cv3['payable'],2)?></b></div></div>
+  <details><summary>Protection / adjustments</summary><p>Hold $<?=number_format($cv3['risk'],2)?> · Protected $<?=number_format($cv3['protected'],2)?> · Adjustments $<?=number_format($cv3['clawbacks'],2)?></p></details>
  </section>
 
  <section class="card">
@@ -274,7 +290,14 @@ if($page==='sales'){
    </div>
   <?php endforeach;if(!$d['orders']):?><p class="muted">No orders assigned yet.</p><?php endif;?>
  </section>
+ <section class="card sales-wide commission-ledger">
+  <div class="section-title-inline"><div><span class="eyebrow">PAYMENT LEDGER</span><h2>My commission history</h2></div><span class="pill"><?=count($salesLedger)?> ENTRIES</span></div>
+  <div class="tablewrap"><table class="table"><tr><th>Order</th><th>Product</th><th>Your pay</th><th>Status</th><th>Paid</th></tr><?php foreach($salesLedger as $x):?><tr><td><?=e($x['public_id'])?><br><small><?=e(($x['provider']?:'').' · '.($x['deal']?:''))?></small></td><td><?=e(ucwords(str_replace('_',' ',$x['category'])))?></td><td><strong>$<?=number_format((float)$x['salesperson_amount'],2)?></strong></td><td><span class="pill"><?=e(strtoupper($x['status']))?></span></td><td><?=e($x['paid_at']?:'—')?></td></tr><?php endforeach;if(!$salesLedger):?><tr><td colspan="5">No commission entries yet.</td></tr><?php endif;?></table></div>
+ </section>
 </div>
+<script>
+document.querySelectorAll('[data-earning-amount]').forEach(el=>el.addEventListener('change',()=>{let total=0;document.querySelectorAll('[data-earning-amount]:checked').forEach(x=>total+=Number(x.dataset.earningAmount||0));const out=document.querySelector('[data-earnings-total]');if(out)out.textContent='$'+total.toFixed(2);}));
+</script>
 <?php layout_end();exit;
 }
 
@@ -289,6 +312,15 @@ if($page==='documents'){ $u=require_approved();if($_SERVER['REQUEST_METHOD']==='
 if($page==='bundle'){ $u=require_approved();if($_SERVER['REQUEST_METHOD']==='POST'){csrf_check();if(($_POST['action']??'')==='bundle_save'){bundle_cart_save((int)$u['id'],$_POST['deal_ids']??[]);$_SESSION['flash']='Bundle saved.';}redirect(url('?page=bundle'));}$deals=active_deals();$cart=bundle_cart_get((int)$u['id']);$selected=$cart['ids']??[];$pricing=bundle_price_v3($selected);layout_start('Bundle builder');?>
 <section class="bundle-hero"><span class="eyebrow">BUNDLE ENGINE V2</span><h1>Build your connection.</h1><p>Mix internet, mobility, TV and home services. Save the cart and return anytime.</p></section><form method="post" class="bundle-builder" data-bundle-builder><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="bundle_save"><div class="bundle-products"><?php foreach($deals as $d):$credit=deal_customer_credit($d);?><label class="bundle-product provider-<?=e(provider_slug($d['provider']))?>"><input type="checkbox" name="deal_ids[]" data-bundle-item data-price="<?=e((string)$d['monthly_price'])?>" data-credit="<?=e((string)$credit)?>" value="<?=$d['id']?>" <?=in_array((int)$d['id'],$selected,true)?'checked':''?>><span class="pill"><?=e($d['provider'].' · '.$d['category'])?></span><h2><?=e($d['name'])?></h2><strong>$<?=number_format((float)$d['monthly_price'],2)?><small>/mo</small></strong><?php if($credit):?><div class="quote-credit">$<?=number_format($credit,0)?> credit</div><?php endif;?><p><?=e($d['speed_data']??'')?></p></label><?php endforeach;?></div><aside class="bundle-summary card revealed"><span>YOUR SAVED BUNDLE</span><strong data-bundle-monthly>$<?=number_format((float)$pricing['final_monthly'],2)?>/mo</strong><b data-bundle-credit>$<?=number_format((float)$pricing['final_credits'],0)?> credits</b><small data-bundle-count><?=count($selected)?> services selected</small><?php if($pricing['bundle_discount']>0):?><div class="bundle-saving">You save $<?=number_format($pricing['bundle_discount'],2)?>/mo</div><?php endif;if($pricing['applied_rules']):?><small><?=e(implode(' · ',$pricing['applied_rules']))?></small><?php endif;?><button type="submit">Save bundle</button><a class="button secondary" href="<?=e(url('?page=deals'))?>">Browse offers</a></aside></form><?php layout_end();exit;}
 
+if($page==='upgrade'){
+ $u=require_approved();$offers=customer_upgrade_recommendations((int)$u['id'],18);$s=customer_savings((int)$u['id']);
+ layout_start('Upgrade Centre','Personalized SecureLink upgrade and add-on recommendations based on your active services.');?>
+ <section class="upgrade-hero"><div><span class="eyebrow">UPGRADE CENTRE · OS V5</span><h1>Make your setup better.</h1><p>Compare live offers against the services already on your SecureLink account. Add a missing service, lower a monthly price, or choose a better-value plan.</p></div><div class="upgrade-current"><small>CURRENT MONTHLY</small><strong>$<?=number_format($s['monthly'],2)?></strong><span><?=count($s['services'])?> active service<?=count($s['services'])===1?'':'s'?></span></div></section>
+ <?php if($s['services']):?><section class="current-service-strip"><?php foreach($s['services'] as $x):?><article><span><?=e($x['provider'].' · '.$x['category'])?></span><b>$<?=number_format((float)$x['monthly'],2)?><small>/mo</small></b></article><?php endforeach;?></section><?php endif;?>
+ <div class="upgrade-grid"><?php foreach($offers as $d):?><article class="card upgrade-card provider-<?=e(provider_slug($d['provider']))?>"><div class="row between"><span class="pill"><?=e($d['provider'].' · '.$d['category'])?></span><span class="upgrade-reason"><?=e($d['recommendation'])?></span></div><h2><?=e($d['name'])?></h2><div class="price">$<?=number_format((float)$d['monthly_price'],2)?><small>/mo</small></div><?php if($d['current_monthly']!==null):?><p class="muted">Current <?=e($d['category'])?>: $<?=number_format((float)$d['current_monthly'],2)?>/mo</p><?php else:?><p class="muted">You do not currently have this service category in SecureLink.</p><?php endif;?><p><?=e($d['speed_data']?:$d['description'])?></p><div class="deal-actions"><a class="button" href="<?=e(url('?page=apply&id='.$d['id']))?>">Choose offer</a><a class="button secondary" href="<?=e(url('?page=compare&left='.$d['id']))?>">Compare</a></div></article><?php endforeach;if(!$offers):?><article class="card empty-state"><h2>No recommendations right now.</h2><p>There are no active offers to compare against your services.</p></article><?php endif;?></div>
+ <?php layout_end();exit;
+}
+
 if($page==='account'){
  $u=require_approved();$d=customer_portal_v3($u);$rd=$d['referrals'];$latest=$d['orders'][0]??null;$s=$d['savings'];
  layout_start('My SecureLink','Your personalized SecureLink home.');?>
@@ -296,7 +328,7 @@ if($page==='account'){
  <?php if($d['actions']):?><section class="action-centre"><div class="section-title-inline"><div><span class="eyebrow">ACTION CENTRE</span><h2>You have <?=count($d['actions'])?> thing<?=count($d['actions'])===1?'':'s'?> to complete.</h2></div></div><div class="action-list"><?php foreach($d['actions'] as $x):?><a class="card customer-action" href="<?=e(url($x['url']))?>"><span class="action-icon">!</span><div><b><?=e($x['title'])?></b><small><?=e($x['meta'])?></small></div><i>→</i></a><?php endforeach;?></div></section><?php endif;?>
  <?php if($latest):?><section class="card live-order"><div class="row between"><div><span class="eyebrow">LIVE ORDER</span><h2><?=e($latest['provider'].' · '.$latest['deal'])?></h2><p><?=e(order_next_step($latest))?></p></div><span class="pill"><?=e(strtoupper(str_replace('_',' ',$latest['status'])))?></span></div><?php $steps=order_status_steps();$rank=order_status_rank($latest['status']);?><div class="order-timeline compact"><?php foreach($steps as $key=>$label):$idx=order_status_rank($key);?><div class="<?=$idx<=$rank?'done':''?>"><i><?=$idx<$rank?'✓':($idx===$rank?'•':'')?></i><span><?=e($label)?></span></div><?php endforeach;?></div><?php if($latest['appointment_at']):?><div class="appointment-card"><span>NEXT APPOINTMENT</span><strong><?=e(date('D, M j · g:i A',strtotime($latest['appointment_at'])))?></strong></div><?php endif;?><a class="text-link" href="<?=e(url('?page=orders'))?>">Track full order →</a></section><?php endif;?>
  <section class="portal-kpis"><article><span>Active services</span><strong><?=count($s['services'])?></strong></article><article><span>Your monthly</span><strong>$<?=number_format($s['monthly'],0)?></strong></article><article><span>Monthly savings</span><strong>$<?=number_format(max(0,$s['regular']-$s['monthly']),0)?></strong></article><article><span>Rewards earned</span><strong>$<?=number_format($rd['earned'],0)?></strong></article></section>
- <section class="portal-launchpad"><a href="<?=e(url('?page=services'))?>"><b>My Services</b><span>Plans, prices & terms →</span></a><a href="<?=e(url('?page=savings'))?>"><b>Savings Centre</b><span>See your total value →</span></a><a href="<?=e(url('?page=bundle'))?>"><b>Build a Bundle</b><span>Unlock bundle savings →</span></a><a href="<?=e(url('?page=documents'))?>"><b>Documents</b><span><?=$d['documents_pending']?> need attention →</span></a><a href="<?=e(url('?page=appointments'))?>"><b>Appointments</b><span>View or request changes →</span></a><a href="<?=e(url('?page=support'))?>"><b>Support</b><span><?=$d['support_open']?> open conversation(s) →</span></a><a href="<?=e(url('?page=referrals'))?>"><b>Refer & Earn</b><span>$<?=number_format((float)($rd['program']['current_reward']??0),0)?> current reward →</span></a><a href="<?=e(url('?page=renewals'))?>"><b>Renewals</b><span>Never miss a promo expiry →</span></a><a href="<?=e(url('?page=household'))?>"><b>Household</b><span>People & future lines →</span></a><a href="<?=e(url('?page=preferences'))?>"><b>Preferences</b><span>Email & SMS choices →</span></a><a href="<?=e(url('?page=security'))?>"><b>Privacy & Security</b><span>Protect your account →</span></a></section>
+ <section class="portal-launchpad"><a class="launch-featured" href="<?=e(url('?page=upgrade'))?>"><b>Upgrade Centre</b><span>Personalized offers & better-value options →</span></a><a href="<?=e(url('?page=services'))?>"><b>My Services</b><span>Plans, prices & terms →</span></a><a href="<?=e(url('?page=savings'))?>"><b>Savings Centre</b><span>See your total value →</span></a><a href="<?=e(url('?page=bundle'))?>"><b>Build a Bundle</b><span>Unlock bundle savings →</span></a><a href="<?=e(url('?page=documents'))?>"><b>Documents</b><span><?=$d['documents_pending']?> need attention →</span></a><a href="<?=e(url('?page=appointments'))?>"><b>Appointments</b><span>View or request changes →</span></a><a href="<?=e(url('?page=support'))?>"><b>Support</b><span><?=$d['support_open']?> open conversation(s) →</span></a><a href="<?=e(url('?page=referrals'))?>"><b>Refer & Earn</b><span>$<?=number_format((float)($rd['program']['current_reward']??0),0)?> current reward →</span></a><a href="<?=e(url('?page=renewals'))?>"><b>Renewals</b><span>Never miss a promo expiry →</span></a><a href="<?=e(url('?page=household'))?>"><b>Household</b><span>People & future lines →</span></a><a href="<?=e(url('?page=preferences'))?>"><b>Preferences</b><span>Email & SMS choices →</span></a><a href="<?=e(url('?page=security'))?>"><b>Privacy & Security</b><span>Protect your account →</span></a></section>
  <?php layout_end();exit;
 }
 
@@ -304,7 +336,7 @@ if($page==='services'){
  $u=require_approved();
  if($_SERVER['REQUEST_METHOD']==='POST'){csrf_check();$act=$_POST['action']??'';if($act==='service_account_save'){$sid=(int)($_POST['service_id']??0);$vals=[trim($_POST['provider']??''),trim($_POST['service_type']??''),trim($_POST['account_number']??''),trim($_POST['cid']??''),trim($_POST['account_name']??''),trim($_POST['service_address']??''),trim($_POST['service_email']??''),trim($_POST['service_phone']??'')];if($sid){db()->prepare("UPDATE customer_service_accounts SET provider=?,service_type=?,account_number=?,cid=?,account_name=?,service_address=?,email=?,phone=?,updated_at=datetime('now') WHERE id=? AND user_id=?")->execute([...$vals,$sid,(int)$u['id']]);}else{db()->prepare("INSERT INTO customer_service_accounts(user_id,provider,service_type,account_number,cid,account_name,service_address,email,phone) VALUES(?,?,?,?,?,?,?,?,?)")->execute([(int)$u['id'],...$vals]);}audit((int)$u['id'],'service_account_save','customer_service_account',$sid?:((int)db()->lastInsertId()));}redirect(url('?page=services&saved=1'));}
  $s=customer_savings((int)$u['id']);$accounts=rows("SELECT * FROM customer_service_accounts WHERE user_id=? ORDER BY provider,service_type,id",[(int)$u['id']]);layout_start('My Services');?>
- <section class="customer-pagehead"><div><span class="eyebrow">MY SERVICES</span><h1>Your connections.</h1><p>Active services plus your TELUS and Rogers account details.</p></div></section>
+ <section class="customer-pagehead"><div><span class="eyebrow">MY SERVICES · OS V5</span><h1>Your service wallet.</h1><p>Active services, provider accounts, plan value and upgrade paths in one place.</p></div><a class="button" href="<?=e(url('?page=upgrade'))?>">Explore upgrades</a></section>
  <section class="card"><div class="row between"><div><span class="eyebrow">PROVIDER ACCOUNTS</span><h2>Add TELUS or Rogers account</h2></div></div><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="service_account_save"><div class="formgrid"><label>Provider<select name="provider" required><option>TELUS</option><option>Rogers</option></select></label><label>Service<select name="service_type" required><option>Internet</option><option>Mobility</option><option>Home Phone</option><option>TV</option><option>Security</option></select></label><label>Account number<input name="account_number"></label><label>CID<input name="cid"></label><label>Name on account<input name="account_name" value="<?=e($u['name'])?>"></label><label>Email<input type="email" name="service_email" value="<?=e($u['email'])?>"></label><label>Phone<input name="service_phone" value="<?=e($u['phone']??'')?>"></label><label>Service address<input name="service_address"></label></div><button>Save provider account</button></form></section>
  <?php if($accounts):?><div class="grid section"><?php foreach($accounts as $x):?><article class="card"><span class="pill"><?=e($x['provider'].' · '.$x['service_type'])?></span><h3><?=e($x['account_name']?:'Account')?></h3><p><b>Account:</b> <?=e($x['account_number']?:'—')?><br><b>CID:</b> <?=e($x['cid']?:'—')?><br><b>Email:</b> <?=e($x['email']?:'—')?><br><b>Phone:</b> <?=e($x['phone']?:'—')?><br><b>Address:</b> <?=e($x['service_address']?:'—')?></p><details><summary>Edit details</summary><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="service_account_save"><input type="hidden" name="service_id" value="<?=$x['id']?>"><div class="formgrid"><label>Provider<select name="provider"><option <?=$x['provider']==='TELUS'?'selected':''?>>TELUS</option><option <?=$x['provider']==='Rogers'?'selected':''?>>Rogers</option></select></label><label>Service<input name="service_type" value="<?=e($x['service_type'])?>"></label><label>Account number<input name="account_number" value="<?=e($x['account_number'])?>"></label><label>CID<input name="cid" value="<?=e($x['cid'])?>"></label><label>Name on account<input name="account_name" value="<?=e($x['account_name'])?>"></label><label>Email<input name="service_email" value="<?=e($x['email'])?>"></label><label>Phone<input name="service_phone" value="<?=e($x['phone'])?>"></label><label>Address<input name="service_address" value="<?=e($x['service_address'])?>"></label></div><button>Update</button></form></details></article><?php endforeach;?></div><?php endif;?>
  <div class="service-wallet"><?php foreach($s['services'] as $x):?><article class="card service-pass provider-<?=e(provider_slug($x['provider']))?>"><span class="pill"><?=e($x['provider'].' · '.$x['category'])?></span><h2><?=e($x['deal'])?></h2><strong>$<?=number_format($x['monthly'],2)?><small>/mo</small></strong><div class="service-meta"><span>Regular $<?=number_format($x['regular'],2)?></span><span>$<?=number_format($x['credit'],0)?> credit</span><span><?=e(ucfirst($x['status']))?></span></div></article><?php endforeach;?></div><?php layout_end();exit;}
