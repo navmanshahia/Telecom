@@ -1061,8 +1061,8 @@ function sales_commission_forecast(array $u): array {
     $quotePotential=0.0;
     foreach(rows("SELECT q.* FROM quotes q LEFT JOIN leads l ON l.id=q.lead_id WHERE (q.created_by=? OR lower(COALESCE(l.sales_agent,''))=lower(?)) AND q.status IN ('sent','viewed','accepted')",[$uid,$name]) as $q){
         foreach(quote_calculate(json_decode((string)$q['deal_ids_json'],true)?:[])['items'] as $d){
-            $key=strtolower((string)$d['category']);
-            if($key==='home phone')$key='homephone';
+            $key=strtolower(trim((string)$d['category']));$key=str_replace([' ','-'],'_',$key);
+            if(in_array($key,['home_phone','homephone'],true))$key='homephone';
             if($key==='mobility')$key=str_contains(strtolower((string)$d['provider'].' '.(string)$d['name']),'koodo')?'koodo_mobility':'telus_mobility';
             if(isset($rates[$key])&&$rates[$key]['configured'])$quotePotential+=(float)$rates[$key]['amount'];
         }
