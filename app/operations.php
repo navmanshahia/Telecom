@@ -1091,8 +1091,13 @@ function sales_customer_create_or_link(array $salesperson,string $name,string $e
     if($name===''||!filter_var($email,FILTER_VALIDATE_EMAIL)||$phone==='') throw new RuntimeException('Name, valid email and phone are required.');
     $existing=rows("SELECT id,role FROM users WHERE lower(email)=lower(?) LIMIT 1",[$email])[0]??null;
     if($existing && $existing['role']!=='customer') throw new RuntimeException('That email belongs to a non-customer account.');
-    if($existing){$uid=(int)$existing['id'];db()->prepare("UPDATE users SET name=?,phone=? WHERE id=?")->execute([$name,$phone,$uid]);}
-    else{
+    if($existing){
+        $uid=(int)$existing['id'];
+        $owner=(int)(scalar("SELECT salesperson_user_id FROM sales_customer_owners WHERE user_id=? LIMIT 1",[$uid])?:0);
+        $otherAgent=(int)scalar("SELECT COUNT(*) FROM orders WHERE user_id=? AND COALESCE(trim(sales_agent),'')<>'' AND lower(sales_agent)<>lower(?)",[$uid,(string)$salesperson['name']]);
+        if(($owner&&$owner!==(int)$salesperson['id'])||$otherAgent>0) throw new RuntimeException('This customer is already assigned to another salesperson.');
+        db()->prepare("UPDATE users SET name=?,phone=? WHERE id=?")->execute([$name,$phone,$uid]);
+    }else{
         $temp=bin2hex(random_bytes(18));
         db()->prepare("INSERT INTO users(name,email,phone,password_hash,role,status) VALUES(?,?,?,?, 'customer','pending')")->execute([$name,$email,$phone,password_hash($temp,PASSWORD_DEFAULT)]);
         $uid=(int)db()->lastInsertId();issue_email_verification($uid);
@@ -1100,6 +1105,8 @@ function sales_customer_create_or_link(array $salesperson,string $name,string $e
     sales_assign_customer($uid,(int)$salesperson['id']);
     db()->prepare("INSERT INTO customer_profiles(user_id,service_address,updated_at) VALUES(?,?,datetime('now')) ON CONFLICT(user_id) DO UPDATE SET service_address=CASE WHEN excluded.service_address<>'' THEN excluded.service_address ELSE customer_profiles.service_address END,updated_at=datetime('now')")->execute([$uid,$address]);
     sales_application_checklist_seed($uid,null);
+    db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id IS NULL AND check_key='contact'")->execute([(int)$salesperson['id'],$uid]);
+    if($address!=='')db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id IS NULL AND check_key='address'")->execute([(int)$salesperson['id'],$uid]);
     audit((int)$salesperson['id'],'sales_customer_create_or_link','user',$uid,['email'=>$email]);
     return $uid;
 }
@@ -1117,6 +1124,7 @@ function sales_customer_order_submit(array $salesperson,int $userId,int $dealId,
       ->execute([$public,$userId,(int)$deal['id'],(int)$deal['provider_id'],$deal['category'],json_encode($deal,JSON_UNESCAPED_SLASHES),(string)$salesperson['name'],(string)$cu['email'],(string)$cu['phone'],$serviceAddress,$identity['id_type']??'', $identity['id_number_encrypted']??null,commission_rule_amount((int)$deal['provider_id'],(string)$deal['category'])]);
     $oid=(int)db()->lastInsertId();sync_order_items($oid);sync_commission_ledger($oid);sales_application_checklist_seed($userId,$oid);
     foreach(['contact','address','offer','consent'] as $key) db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id=? AND check_key=?")->execute([(int)$salesperson['id'],$userId,$oid,$key]);
+    db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id IS NULL AND check_key IN ('contact','address','offer','consent')")->execute([(int)$salesperson['id'],$userId]);
     if($identity)db()->prepare("UPDATE application_checklists SET status='complete',completed_by=?,completed_at=datetime('now') WHERE user_id=? AND order_id=? AND check_key='identity'")->execute([(int)$salesperson['id'],$userId,$oid]);
     create_task('Process salesperson order','order',$oid,null,'high',date('Y-m-d H:i:s'),'Submitted by '.(string)$salesperson['name'].' for '.$cu['name'].', review application checklist and process provider order.',(int)$salesperson['id']);
     audit((int)$salesperson['id'],'sales_order_submit','order',$oid,['customer_id'=>$userId,'deal_id'=>$dealId]);
