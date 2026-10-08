@@ -839,8 +839,7 @@ function issue_email_verification(int $userId): void {
       ->execute([$userId,hash('sha256',$token)]);
     $link=app_absolute_url('?page=verify-email&token='.rawurlencode($token));
     $subject='Verify your SecureLink email';$message="Hi ".($u['name']?:'there').",\n\nVerify your email to finish securing your SecureLink account:\n".$link."\n\nThis link expires in 24 hours.";
-    if(db_table_exists('communications')) queue_email($userId,null,null,$subject,$message,$userId);
-    if(db_table_exists('notification_queue')) queue_notification($userId,null,null,$subject,$message,$userId,'email',(string)$u['email']);
+    if(db_table_exists('notification_queue')) queue_notification($userId,null,null,$subject,$message,$userId,'email',(string)$u['email'],null,'security_verification');
 }
 function verify_email_token(string $token): bool {
     ensure_platform_schema();
@@ -867,8 +866,7 @@ function issue_password_reset(string $email): void {
       ->execute([(int)$u['id'],hash('sha256',$token)]);
     $link=app_absolute_url('?page=reset-password&token='.rawurlencode($token));
     $subject='Reset your SecureLink password';$message="Hi ".($u['name']?:'there').",\n\nUse this one-time link to reset your SecureLink password:\n".$link."\n\nThis link expires in 60 minutes. If you did not request it, ignore this message.";
-    if(db_table_exists('communications')) queue_email((int)$u['id'],null,null,$subject,$message,(int)$u['id']);
-    if(db_table_exists('notification_queue')) queue_notification((int)$u['id'],null,null,$subject,$message,(int)$u['id'],'email',(string)$u['email']);
+    if(db_table_exists('notification_queue')) queue_notification((int)$u['id'],null,null,$subject,$message,(int)$u['id'],'email',(string)$u['email'],null,'security_reset');
 }
 function reset_password_with_token(string $token,string $password): bool {
     ensure_platform_schema();
