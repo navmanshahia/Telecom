@@ -311,7 +311,9 @@ if($page==='sales'){
  $d=salesperson_dashboard($u);
  $cv3=salesperson_commission_v3((string)$u['name']);
  $salesDeals=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' ORDER BY p.name,d.category,d.monthly_price");
- $payRates=$u['role']==='salesperson'?salesperson_commission_rates((int)$u['id']):[];
+ $payRates=$u['role']==='salesperson'?salesperson_effective_commission_rates($u):[];
+ $tierStatus=$u['role']==='salesperson'?salesperson_current_tier($u):[];
+ $commissionTiers=$u['role']==='salesperson'?sales_commission_tiers():[];
  $salesLedger=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id WHERE lower(cl.sales_agent)=lower(?) ORDER BY cl.id DESC LIMIT 40",[(string)$u['name']]);
  $target=rows("SELECT * FROM sales_targets WHERE lower(sales_agent)=lower(?) AND period=? LIMIT 1",[(string)$u['name'],date('Y-m')])[0]??[];
  $todayActions=smart_action_queue((string)$u['name']);
@@ -352,17 +354,14 @@ if($page==='sales'){
 </section>
 
 <?php if($u['role']==='salesperson'):?>
-<section class="card sales-pay-rates">
- <div class="row between"><div><span class="eyebrow">MY PAY RATES</span><h2>What you earn per activated product.</h2></div><span class="pill">OWNER CONTROLLED</span></div>
- <div class="pay-rate-grid">
-  <?php foreach($payRates as $rate):?>
-   <article class="<?=$rate['configured']?'configured':'unset'?>">
-    <span><?=e($rate['label'])?></span>
-    <strong><?=$rate['configured']?'$'.number_format((float)$rate['amount'],2):'Global rule'?></strong>
-    <small><?=$rate['configured']?'per activated product':'No personal override set'?></small>
-   </article>
-  <?php endforeach;?>
+<section class="card sales-pay-rates tier-pay-rates">
+ <div class="row between"><div><span class="eyebrow">MY COMMISSION TIER</span><h2><?=e($tierStatus['tier_name'])?> · <?=$tierStatus['activations']?> activated sale<?=$tierStatus['activations']===1?'':'s'?> this month</h2></div><span class="pill tier-<?=e($tierStatus['tier_key'])?>"><?=e(strtoupper($tierStatus['tier_name']))?></span></div>
+ <?php if($tierStatus['next']):?><div class="tier-progress"><div><b><?=$tierStatus['remaining']?> more sale<?=$tierStatus['remaining']===1?'':'s'?> to <?=e($tierStatus['next']['name'])?></b><span>First 10 activated sales use Standard. Sale #11 onward uses Premier.</span></div><i><span style="width:<?=min(100,$tierStatus['activations']*10)?>%"></span></i></div><?php else:?><div class="tier-progress premier"><div><b>Premier unlocked</b><span>Every additional activated sale this month uses Premier rates.</span></div><i><span style="width:100%"></span></i></div><?php endif;?>
+ <div class="tier-rate-compare">
+  <div class="tier-rate-head"><b>Product</b><?php foreach($commissionTiers as $ct):?><b><?=e($ct['name'])?></b><?php endforeach;?></div>
+  <?php foreach(salesperson_commission_products() as $key=>$label):?><div class="tier-rate-row <?=($payRates[$key]['override']??false)?'has-override':''?>"><span><?=e($label)?><?php if($payRates[$key]['override']??false):?><small>Personal override</small><?php endif;?></span><?php foreach($commissionTiers as $ct):?><b>$<?=number_format((float)($ct['rates'][$key]??0),2)?></b><?php endforeach;?></div><?php endforeach;?>
  </div>
+ <p class="muted">Your calculator below uses your current tier. A personal override, if set by the owner, replaces both tier rates for that product.</p>
 </section>
 <?php endif;?>
 
@@ -370,8 +369,8 @@ if($page==='sales'){
 <div class="sales-v5-top">
  <section class="card earnings-calculator">
   <div class="row between"><div><span class="eyebrow">EARNINGS CALCULATOR</span><h2>What would this sale pay me?</h2></div><strong data-earnings-total>$0.00</strong></div>
-  <div class="earning-product-grid"><?php foreach($payRates as $rate):?><label class="<?=$rate['configured']?'':'disabled-rate'?>"><input type="checkbox" data-earning-amount="<?=number_format((float)$rate['amount'],2,'.','')?>" <?=$rate['configured']?'':'disabled'?>> <span><?=e($rate['label'])?><b><?=$rate['configured']?'$'.number_format((float)$rate['amount'],2):'Not set'?></b></span></label><?php endforeach;?></div>
-  <small>Select the products in a possible sale. This uses your personal rates set by the owner.</small>
+  <div class="earning-product-grid"><?php foreach($payRates as $rate):?><label><input type="checkbox" data-earning-amount="<?=number_format((float)$rate['amount'],2,'.','')?>"> <span><?=e($rate['label'])?><b>$<?=number_format((float)$rate['amount'],2)?></b><small><?=e($rate['tier_name'])?></small></span></label><?php endforeach;?></div>
+  <small>Select the products in a possible sale. The calculator uses your current <?=e($tierStatus['tier_name'])?> rate<?=array_filter($payRates,fn($r)=>$r['override'])?' with any personal overrides applied':''?>.</small>
  </section>
  <section class="card target-card">
   <span class="eyebrow">THIS MONTH</span><h2>My targets</h2>
@@ -441,7 +440,7 @@ if($page==='sales'){
  </section>
  <section class="card sales-wide commission-ledger">
   <div class="section-title-inline"><div><span class="eyebrow">PAYMENT LEDGER</span><h2>My commission history</h2></div><span class="pill"><?=count($salesLedger)?> ENTRIES</span></div>
-  <div class="tablewrap"><table class="table"><tr><th>Order</th><th>Product</th><th>Your pay</th><th>Status</th><th>Paid</th></tr><?php foreach($salesLedger as $x):?><tr><td><?=e($x['public_id'])?><br><small><?=e(($x['provider']?:'').' · '.($x['deal']?:''))?></small></td><td><?=e(ucwords(str_replace('_',' ',$x['category'])))?></td><td><strong>$<?=number_format((float)$x['salesperson_amount'],2)?></strong></td><td><span class="pill"><?=e(strtoupper($x['status']))?></span></td><td><?=e($x['paid_at']?:'—')?></td></tr><?php endforeach;if(!$salesLedger):?><tr><td colspan="5">No commission entries yet.</td></tr><?php endif;?></table></div>
+  <div class="tablewrap"><table class="table"><tr><th>Order</th><th>Product</th><th>Tier</th><th>Your pay</th><th>Status</th><th>Paid</th></tr><?php foreach($salesLedger as $x):?><tr><td><?=e($x['public_id'])?><br><small><?=e(($x['provider']?:'').' · '.($x['deal']?:''))?></small></td><td><?=e(ucwords(str_replace('_',' ',$x['category'])))?></td><td><span class="pill"><?=e(strtoupper($x['commission_tier']?:'pending'))?></span><?php if(!empty($x['activation_sequence'])):?><br><small>Sale #<?=$x['activation_sequence']?></small><?php endif;?></td><td><strong>$<?=number_format((float)$x['salesperson_amount'],2)?></strong></td><td><span class="pill"><?=e(strtoupper($x['status']))?></span></td><td><?=e($x['paid_at']?:'—')?></td></tr><?php endforeach;if(!$salesLedger):?><tr><td colspan="6">No commission entries yet.</td></tr><?php endif;?></table></div>
  </section>
 </div>
 <script>
