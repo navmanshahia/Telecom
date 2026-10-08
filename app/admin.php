@@ -158,8 +158,61 @@ elseif($view==='salescontrol'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM l
 elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name)) lead_count,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name)) order_count,(SELECT COALESCE(SUM(cl.salesperson_amount),0) FROM commission_ledger cl WHERE lower(cl.sales_agent)=lower(u.name) AND cl.status IN ('pending','hold','approved','paid')) salesperson_commission FROM users u WHERE u.role='salesperson' ORDER BY u.name");?>
 <div class="pagehead"><div><span class="eyebrow">SALES TEAM</span><h1>Salesperson accounts & pay rates.</h1><p class="muted">Create logins, control access and set a different fixed payout for every salesperson and product type.</p></div><a class="button secondary" href="<?=e(url('?page=sales'))?>">Open sales portal</a></div>
 <section class="card"><h2>Create salesperson login</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="salesperson_create"><div class="formgrid"><label>Full name<input name="name" required></label><label>Email<input type="email" name="email" required></label><label>Phone<input name="phone"></label><label>Temporary password<input type="password" name="password" minlength="12" required><small>Minimum 12 characters. Share it securely.</small></label></div><button>Create salesperson</button></form></section>
-<div class="salesperson-admin-grid section"><?php foreach($staff as $s):$rates=salesperson_commission_rates((int)$s['id']);?><article class="card salesperson-admin-card"><div class="row between"><div><span class="pill"><?=e(strtoupper($s['status']))?></span><h2><?=e($s['name'])?></h2><p><?=e($s['email'])?> · <?=e($s['phone']?:'No phone')?></p></div><strong>$<?=number_format((float)$s['salesperson_commission'],2)?><small> tracked pay</small></strong></div><div class="service-meta"><span><?=$s['lead_count']?> leads</span><span><?=$s['order_count']?> orders</span></div>
-<?php if($a['role']==='owner'):?><details class="commission-rate-editor" open><summary>Product commission rates</summary><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="salesperson_commission_save"><input type="hidden" name="id" value="<?=$s['id']?>"><div class="commission-rate-grid"><?php foreach($rates as $rate):?><label><span><?=e($rate['label'])?></span><div class="money-input"><b>$</b><input type="number" min="0" step=".01" name="rate_<?=e($rate['key'])?>" value="<?=$rate['configured']?e(number_format((float)$rate['amount'],2,'.','')):''?>" placeholder="Not set"></div><small>Per activated product</small></label><?php endforeach;?></div><button>Save <?=e($s['name'])?>'s pay rates</button><p class="muted">Blank = use the existing global percentage rule. A value, including $0, overrides the global rule for this salesperson/product.</p></form></details><?php else:?><div class="commission-rate-readonly"><?php foreach($rates as $rate):?><span><b><?=e($rate['label'])?></b><strong><?=$rate['configured']?'
+<div class="salesperson-admin-grid section">
+<?php foreach($staff as $s):$rates=salesperson_commission_rates((int)$s['id']);?>
+<article class="card salesperson-admin-card">
+ <div class="row between">
+  <div><span class="pill"><?=e(strtoupper($s['status']))?></span><h2><?=e($s['name'])?></h2><p><?=e($s['email'])?> · <?=e($s['phone']?:'No phone')?></p></div>
+  <strong>$<?=number_format((float)$s['salesperson_commission'],2)?><small> tracked pay</small></strong>
+ </div>
+ <div class="service-meta"><span><?=$s['lead_count']?> leads</span><span><?=$s['order_count']?> orders</span></div>
+ <?php if($a['role']==='owner'):?>
+ <details class="commission-rate-editor" open>
+  <summary>Product commission rates</summary>
+  <form method="post">
+   <input type="hidden" name="_token" value="<?=e(csrf())?>">
+   <input type="hidden" name="action" value="salesperson_commission_save">
+   <input type="hidden" name="id" value="<?=$s['id']?>">
+   <div class="commission-rate-grid">
+    <?php foreach($rates as $rate):?>
+    <label>
+     <span><?=e($rate['label'])?></span>
+     <div class="money-input"><b>$</b><input type="number" min="0" step=".01" name="rate_<?=e($rate['key'])?>" value="<?=$rate['configured']?e(number_format((float)$rate['amount'],2,'.','')):''?>" placeholder="Not set"></div>
+     <small>Per activated product</small>
+    </label>
+    <?php endforeach;?>
+   </div>
+   <button>Save <?=e($s['name'])?>'s pay rates</button>
+   <p class="muted">Blank = use the existing global percentage rule. A value, including $0, overrides the global rule for this salesperson/product.</p>
+  </form>
+ </details>
+ <?php else:?>
+ <div class="commission-rate-readonly">
+  <?php foreach($rates as $rate):?>
+   <span><b><?=e($rate['label'])?></b><strong><?=$rate['configured']?'$'.number_format((float)$rate['amount'],2):'Global rule'?></strong></span>
+  <?php endforeach;?>
+ </div>
+ <?php endif;?>
+ <details>
+  <summary>Edit login / access</summary>
+  <form method="post">
+   <input type="hidden" name="_token" value="<?=e(csrf())?>">
+   <input type="hidden" name="action" value="salesperson_update">
+   <input type="hidden" name="id" value="<?=$s['id']?>">
+   <div class="formgrid">
+    <label>Name<input name="name" value="<?=e($s['name'])?>" required></label>
+    <label>Email<input type="email" name="email" value="<?=e($s['email'])?>" required></label>
+    <label>Phone<input name="phone" value="<?=e($s['phone']??'')?>"></label>
+    <label>Status<select name="status"><?php foreach(['approved'=>'Active','suspended'=>'Suspended','blocked'=>'Blocked'] as $v=>$label):?><option value="<?=$v?>" <?=$s['status']===$v?'selected':''?>><?=$label?></option><?php endforeach;?></select></label>
+    <label>New password<input type="password" name="new_password" minlength="12" placeholder="Leave blank to keep current"></label>
+   </div>
+   <button>Save salesperson</button>
+  </form>
+ </details>
+</article>
+<?php endforeach;if(!$staff):?><article class="card empty-state"><h2>No salespeople yet.</h2><p>Create your first salesperson above.</p></article><?php endif;?>
+</div>
+<?php }
 elseif($view==='customer360'){ $id=(int)($_GET['id']??0);$profile=$id?customer_360_v3($id):[];?>
 <div class="pagehead"><div><span class="eyebrow">CUSTOMER 360</span><h1>Everything about one customer.</h1></div></div>
 <?php if(!$profile):?><section class="card"><form method="get"><input type="hidden" name="page" value="admin"><input type="hidden" name="view" value="customer360"><label>Customer ID<input type="number" name="id" required></label><button>Open profile</button></form></section><?php else:$cu=$profile['user'];?>
