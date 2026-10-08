@@ -450,6 +450,24 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,display_name TEXT,active INTEGER NOT NULL DEFAULT 1,commission_percent REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_commission_rates(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,product_key TEXT NOT NULL,amount REAL NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,product_key))");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_salesperson_commission_rates_user ON salesperson_commission_rates(user_id,active)");
+    db()->exec("CREATE TABLE IF NOT EXISTS communication_templates(id INTEGER PRIMARY KEY AUTOINCREMENT,template_key TEXT NOT NULL UNIQUE,name TEXT NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,channel TEXT NOT NULL DEFAULT 'email',active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    $addColumn('communication_templates','updated_at','TEXT');
+    $addColumn('communication_templates','display_order','INTEGER NOT NULL DEFAULT 100');
+    $v5Templates=[
+      ['credit_50',' $50 Credit Processed Successfully','Your $50 SecureLink credit was processed','Hi {{first_name}},\n\nGreat news — your $50 credit has been processed successfully on our side. Please allow the provider billing cycle to reflect it on your account.\n\nIf you have any questions, simply reply to this email.\n\nSecureLink\n{{website}}',10],
+      ['credit_100_today','$100 Credit Processed Successfully Today','Your $100 SecureLink credit was processed today','Hi {{first_name}},\n\nYour $100 credit was processed successfully today. Please allow the provider billing cycle to reflect it on your account.\n\nThank you for choosing SecureLink.\n\nSecureLink\n{{website}}',20],
+      ['new_deals','Great New Deals Available','New SecureLink deals are available','Hi {{first_name}},\n\nWe have some great new Internet, Mobility, TV and Security deals available. Feel free to check the latest offers on our website:\n\n{{website}}\n\nIf you want, reply to this email and we can help compare the best options for you.\n\nSecureLink',30],
+      ['order_received','Order Request Received','We received your SecureLink request','Hi {{first_name}},\n\nWe received your service request and our team is reviewing it. We will contact you if anything else is needed.\n\nYou can sign in anytime to track your order:\n{{website}}\n\nSecureLink',40],
+      ['order_activated','Service Activated','Your SecureLink service is active','Hi {{first_name}},\n\nGood news — your service has been activated successfully.\n\nYou can review your services, order history and savings in your SecureLink account:\n{{website}}\n\nThank you for choosing SecureLink.',50],
+      ['appointment_reminder_v5','Appointment Reminder','Reminder: your SecureLink appointment','Hi {{first_name}},\n\nThis is a reminder about your upcoming service appointment. Please make sure an adult is available and the equipment area is accessible.\n\nCheck your SecureLink account for the latest appointment details:\n{{website}}\n\nSecureLink',60],
+      ['documents_needed','Documents Needed','Action needed for your SecureLink order','Hi {{first_name}},\n\nWe need additional information or documents to continue processing your order. Please sign in to your SecureLink account and open the Documents section:\n{{website}}\n\nSecureLink',70],
+      ['referral_update','Referral Reward Update','Update on your SecureLink referral','Hi {{first_name}},\n\nThere is an update on your SecureLink referral reward. Sign in to your account to view the latest status and reward details:\n{{website}}\n\nThank you for referring your friends and family.',80],
+      ['follow_up','Quick Follow-up','Following up from SecureLink','Hi {{first_name}},\n\nJust following up to see if you still need help with Internet, Mobility, TV, Security or Home Phone services.\n\nYou can review current offers here:\n{{website}}\n\nReply anytime and we will be happy to help.\n\nSecureLink',90],
+      ['thank_you','Thank You','Thank you for choosing SecureLink','Hi {{first_name}},\n\nThank you for choosing SecureLink. We appreciate your business.\n\nIf you need help with your services, upgrades, referrals or future offers, you can always reach us through your SecureLink account or reply to this email.\n\n{{website}}',100]
+    ];
+    foreach($v5Templates as $t){
+      db()->prepare("INSERT OR IGNORE INTO communication_templates(template_key,name,subject,message,channel,active,display_order,updated_at) VALUES(?,?,?,?,'email',1,?,datetime('now'))")->execute($t);
+    }
     db()->exec("CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id))");
     $addColumn('commission_ledger','activated_at','TEXT');
     $addColumn('commission_ledger','clawback_until','TEXT');
@@ -900,7 +918,153 @@ function customer_session_register(int $userId): void { if(session_status()!==PH
 function customer_session_allowed(int $userId): bool { if(!db_table_exists('user_sessions'))return true;$hash=customer_session_hash();$s=db()->prepare("SELECT revoked_at FROM user_sessions WHERE user_id=? AND session_hash=? LIMIT 1");$s->execute([$userId,$hash]);$row=$s->fetch();return !$row||empty($row['revoked_at']); }
 function customer_sessions(int $userId): array { return rows("SELECT *,CASE WHEN session_hash=? THEN 1 ELSE 0 END is_current FROM user_sessions WHERE user_id=? ORDER BY last_seen_at DESC LIMIT 20",[customer_session_hash(),$userId]); }
 function revoke_customer_session(int $userId,int $sessionId): bool { $s=db()->prepare("UPDATE user_sessions SET revoked_at=datetime('now') WHERE id=? AND user_id=? AND revoked_at IS NULL");$s->execute([$sessionId,$userId]);return $s->rowCount()>0; }
-function communication_template(string $key,array $vars=[]): ?array { $t=rows("SELECT * FROM communication_templates WHERE template_key=? AND active=1 LIMIT 1",[$key])[0]??null;if(!$t)return null;foreach($vars as $k=>$v){$t['subject']=str_replace('{{'.$k.'}}',(string)$v,$t['subject']);$t['message']=str_replace('{{'.$k.'}}',(string)$v,$t['message']);}return $t; }
+function communication_templates_all(bool $activeOnly=true): array {
+    if(!db_table_exists('communication_templates')) return [];
+    return rows("SELECT * FROM communication_templates ".($activeOnly?"WHERE active=1 ":"")."ORDER BY display_order,name");
+}
+function communication_template_render_text(string $text,array $vars=[]): string {
+    $defaults=['website'=>app_absolute_url('?page=home'),'today'=>date('F j, Y')];
+    foreach(array_merge($defaults,$vars) as $k=>$v)$text=str_replace('{{'.$k.'}}',(string)$v,$text);
+    return $text;
+}
+function communication_template(string $key,array $vars=[]): ?array {
+    $t=rows("SELECT * FROM communication_templates WHERE template_key=? AND active=1 LIMIT 1",[$key])[0]??null;
+    if(!$t)return null;
+    $t['subject']=communication_template_render_text((string)$t['subject'],$vars);
+    $t['message']=communication_template_render_text((string)$t['message'],$vars);
+    return $t;
+}
+function send_customer_email_v5(int $userId,string $subject,string $message,int $actor,string $templateKey='custom'): int {
+    $u=rows("SELECT id,name,email,role,status FROM users WHERE id=? LIMIT 1",[$userId])[0]??null;
+    if(!$u) throw new RuntimeException('Customer not found.');
+    $email=trim((string)$u['email']);
+    if(!filter_var($email,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Customer does not have a valid email address.');
+    $subject=trim($subject);$message=trim($message);
+    if($subject===''||$message==='') throw new RuntimeException('Subject and message are required.');
+    if(db_table_exists('communications')) queue_email($userId,null,null,$subject,$message,$actor);
+    $nid=queue_notification($userId,null,null,$subject,$message,$actor,'email',$email,null,'manual_'.$templateKey);
+    customer_notification($userId,$subject,'A SecureLink email was sent to '.$email.'.','?page=notifications');
+    audit($actor,'customer_email_send','user',$userId,['template'=>$templateKey,'notification_id'=>$nid]);
+    return $nid;
+}
+function customer_upgrade_recommendations(int $userId,int $limit=12): array {
+    $services=customer_savings($userId)['services'];
+    $current=[];foreach($services as $s){$cat=strtolower((string)$s['category']);$current[$cat]=isset($current[$cat])?min($current[$cat],(float)$s['monthly']):(float)$s['monthly'];}
+    $offers=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' AND p.status='active' AND (d.starts_at IS NULL OR d.starts_at<=datetime('now')) AND (d.expires_at IS NULL OR d.expires_at>=datetime('now')) ORDER BY d.category,d.monthly_price,d.id DESC LIMIT 100");
+    $out=[];foreach($offers as $d){$cat=strtolower((string)$d['category']);$d['current_monthly']=$current[$cat]??null;$d['monthly_difference']=$d['current_monthly']!==null?((float)$d['current_monthly']-(float)$d['monthly_price']):null;$d['recommendation']=$d['current_monthly']===null?'Add a new service':($d['monthly_difference']>0?'Potentially save 
+function sync_customer_order_event(int $orderId,string $status,int $actor=0): void { $message=order_next_step(['status'=>$status]);db()->prepare("INSERT INTO order_status_events(order_id,status,message,actor_user_id) VALUES(?,?,?,?)")->execute([$orderId,$status,$message,$actor?:null]);queue_order_status_notification($orderId,$actor); }
+function customer_feedback_summary(): array { return ['responses'=>(int)scalar("SELECT COUNT(*) FROM customer_feedback"),'nps'=>(float)(scalar("SELECT COALESCE(AVG(CASE WHEN score>=9 THEN 100 WHEN score<=6 THEN -100 ELSE 0 END),0) FROM customer_feedback")?:0),'rating'=>(float)(scalar("SELECT COALESCE(AVG(rating),0) FROM customer_feedback")?:0),'attention'=>(int)scalar("SELECT COUNT(*) FROM customer_feedback WHERE score<=6 AND status='new'")]; }
+
+function platform_schema_version(): string {
+    if(!db_table_exists('schema_migrations')) return 'legacy';
+    return (string)(scalar("SELECT version FROM schema_migrations ORDER BY applied_at DESC,version DESC LIMIT 1") ?: 'baseline');
+}
+function app_absolute_url(string $path): string {
+    $configured=rtrim((string)envv('APP_URL',''),'/');
+    if($configured!==''){
+        if($path===''||$path==='/') return $configured.'/';
+        return $configured.'/'.ltrim($path,'/');
+    }
+    $https=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off') || (($_SERVER['HTTP_X_FORWARDED_PROTO']??'')==='https');
+    $host=$_SERVER['HTTP_HOST']??'localhost';
+    return ($https?'https':'http').'://'.$host.url($path);
+}
+function issue_email_verification(int $userId): void {
+    ensure_platform_schema();
+    $u=rows("SELECT id,name,email,email_verified_at FROM users WHERE id=?",[$userId])[0]??null;
+    if(!$u) return;
+    if(!empty($u['email_verified_at'])){ cancel_verification_messages($userId); return; }
+    cancel_verification_messages($userId,'Superseded by a newer verification link');
+    db()->prepare("DELETE FROM email_verification_tokens WHERE user_id=? AND used_at IS NULL")->execute([$userId]);
+    $token=bin2hex(random_bytes(32));
+    db()->prepare("INSERT INTO email_verification_tokens(user_id,token_hash,expires_at) VALUES(?,?,datetime('now','+24 hours'))")
+      ->execute([$userId,hash('sha256',$token)]);
+    $link=app_absolute_url('?page=verify-email&token='.rawurlencode($token));
+    $subject='Verify your SecureLink email';$message="Hi ".($u['name']?:'there').",\n\nVerify your email to finish securing your SecureLink account:\n".$link."\n\nThis link expires in 24 hours.";
+    if(db_table_exists('notification_queue')) queue_notification($userId,null,null,$subject,$message,$userId,'email',(string)$u['email'],null,'security_verification');
+}
+function verify_email_token(string $token): bool {
+    ensure_platform_schema();
+    if(strlen($token)<32) return false;
+    $s=db()->prepare("SELECT * FROM email_verification_tokens WHERE token_hash=? AND used_at IS NULL AND expires_at>=datetime('now') LIMIT 1");
+    $s->execute([hash('sha256',$token)]);$row=$s->fetch();
+    if(!$row) return false;
+    db()->beginTransaction();
+    try{
+        db()->prepare("UPDATE users SET email_verified_at=datetime('now') WHERE id=?")->execute([(int)$row['user_id']]);
+        db()->prepare("UPDATE email_verification_tokens SET used_at=datetime('now') WHERE id=?")->execute([(int)$row['id']]);
+        db()->commit();
+        cancel_verification_messages((int)$row['user_id'],'Email verified');
+        return true;
+    }catch(Throwable $e){ if(db()->inTransaction()) db()->rollBack(); return false; }
+}
+function issue_password_reset(string $email): void {
+    ensure_platform_schema();
+    $s=db()->prepare("SELECT id,name,email FROM users WHERE lower(email)=lower(?) LIMIT 1");$s->execute([trim($email)]);$u=$s->fetch();
+    if(!$u) return;
+    db()->prepare("DELETE FROM password_reset_tokens WHERE user_id=? AND used_at IS NULL")->execute([(int)$u['id']]);
+    $token=bin2hex(random_bytes(32));
+    db()->prepare("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES(?,?,datetime('now','+60 minutes'))")
+      ->execute([(int)$u['id'],hash('sha256',$token)]);
+    $link=app_absolute_url('?page=reset-password&token='.rawurlencode($token));
+    $subject='Reset your SecureLink password';$message="Hi ".($u['name']?:'there').",\n\nUse this one-time link to reset your SecureLink password:\n".$link."\n\nThis link expires in 60 minutes. If you did not request it, ignore this message.";
+    if(db_table_exists('notification_queue')) queue_notification((int)$u['id'],null,null,$subject,$message,(int)$u['id'],'email',(string)$u['email'],null,'security_reset');
+}
+function reset_password_with_token(string $token,string $password): bool {
+    ensure_platform_schema();
+    if(strlen($token)<32 || strlen($password)<12) return false;
+    $s=db()->prepare("SELECT * FROM password_reset_tokens WHERE token_hash=? AND used_at IS NULL AND expires_at>=datetime('now') LIMIT 1");
+    $s->execute([hash('sha256',$token)]);$row=$s->fetch();
+    if(!$row) return false;
+    db()->beginTransaction();
+    try{
+        db()->prepare("UPDATE users SET password_hash=? WHERE id=?")->execute([password_hash($password,PASSWORD_DEFAULT),(int)$row['user_id']]);
+        db()->prepare("UPDATE password_reset_tokens SET used_at=datetime('now') WHERE id=?")->execute([(int)$row['id']]);
+        db()->prepare("UPDATE password_reset_tokens SET used_at=datetime('now') WHERE user_id=? AND used_at IS NULL")->execute([(int)$row['user_id']]);
+        db()->commit();
+        return true;
+    }catch(Throwable $e){ if(db()->inTransaction()) db()->rollBack(); return false; }
+}
+.number_format($d['monthly_difference'],2).'/mo':'Compare features & value');$out[]=$d;if(count($out)>=$limit)break;}return $out;
+}
+function admin_exception_centre_v5(): array {
+    return [
+      'counts'=>[
+        'unassigned_leads'=>(int)scalar("SELECT COUNT(*) FROM leads WHERE stage NOT IN ('activated','lost') AND COALESCE(trim(sales_agent),'')=''"),
+        'overdue_followups'=>(int)scalar("SELECT COUNT(*) FROM leads WHERE stage NOT IN ('activated','lost') AND next_follow_up_at IS NOT NULL AND next_follow_up_at<datetime('now')"),
+        'stuck_orders'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status NOT IN ('completed','cancelled','rejected') AND updated_at<datetime('now','-24 hours')"),
+        'missing_provider_ref'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('submitted_to_provider','appointment_confirmed','activated') AND COALESCE(trim(provider_reference),'')=''"),
+        'pending_documents'=>(int)scalar("SELECT COUNT(*) FROM documents WHERE status IN ('requested','received','needs_replacement')"),
+        'failed_email'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'"),
+        'unverified_customers'=>(int)scalar("SELECT COUNT(*) FROM users WHERE role='customer' AND email_verified_at IS NULL"),
+        'quotes_waiting'=>(int)scalar("SELECT COUNT(*) FROM quotes WHERE status IN ('sent','viewed') AND created_at<datetime('now','-1 day')")
+      ],
+      'items'=>[
+        'orders'=>rows("SELECT o.id,o.public_id,o.status,o.updated_at,u.name customer,p.name provider FROM orders o JOIN users u ON u.id=o.user_id JOIN providers p ON p.id=o.provider_id WHERE o.status NOT IN ('completed','cancelled','rejected') AND (o.updated_at<datetime('now','-24 hours') OR (o.status IN ('submitted_to_provider','appointment_confirmed','activated') AND COALESCE(trim(o.provider_reference),'')='')) ORDER BY o.updated_at LIMIT 25"),
+        'leads'=>rows("SELECT id,name,stage,sales_agent,next_follow_up_at,lead_score FROM leads WHERE stage NOT IN ('activated','lost') AND (COALESCE(trim(sales_agent),'')='' OR (next_follow_up_at IS NOT NULL AND next_follow_up_at<datetime('now'))) ORDER BY lead_score DESC LIMIT 25"),
+        'emails'=>rows("SELECT nq.*,u.name customer FROM notification_queue nq LEFT JOIN users u ON u.id=nq.user_id WHERE nq.status='failed' ORDER BY nq.id DESC LIMIT 20")
+      ]
+    ];
+}
+function payroll_centre_v5(): array {
+    $totals=[
+      'pending'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status IN ('pending','hold')"),
+      'approved'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status='approved'"),
+      'paid_month'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status='paid' AND paid_at>=datetime('now','start of month')"),
+      'company'=>(float)scalar("SELECT COALESCE(SUM(company_amount),0) FROM commission_ledger")
+    ];
+    $agents=rows("SELECT COALESCE(NULLIF(sales_agent,''),'Unassigned') sales_agent,COUNT(*) orders,SUM(CASE WHEN status IN ('pending','hold') THEN salesperson_amount ELSE 0 END) pending,SUM(CASE WHEN status='approved' THEN salesperson_amount ELSE 0 END) approved,SUM(CASE WHEN status='paid' THEN salesperson_amount ELSE 0 END) paid,SUM(company_amount) company FROM commission_ledger GROUP BY COALESCE(NULLIF(sales_agent,''),'Unassigned') ORDER BY approved DESC,pending DESC");
+    $recent=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id ORDER BY cl.id DESC LIMIT 150");
+    return compact('totals','agents','recent');
+}
+function payroll_mark_paid_v5(int $ledgerId,string $reference,int $actor): void {
+    $row=rows("SELECT * FROM commission_ledger WHERE id=? LIMIT 1",[$ledgerId])[0]??null;
+    if(!$row) throw new RuntimeException('Commission entry not found.');
+    if(!in_array((string)$row['status'],['approved','pending','hold'],true)) throw new RuntimeException('This commission cannot be marked paid from its current status.');
+    db()->prepare("UPDATE commission_ledger SET status='paid',paid_at=datetime('now'),payment_reference=? WHERE id=?")->execute([trim($reference),$ledgerId]);
+    db()->prepare("UPDATE orders SET commission_status='paid' WHERE id=?")->execute([(int)$row['order_id']]);
+    audit($actor,'salesperson_commission_paid','commission_ledger',$ledgerId,['reference'=>$reference,'amount'=>$row['salesperson_amount'],'sales_agent'=>$row['sales_agent']]);
+}
 function sync_customer_order_event(int $orderId,string $status,int $actor=0): void { $message=order_next_step(['status'=>$status]);db()->prepare("INSERT INTO order_status_events(order_id,status,message,actor_user_id) VALUES(?,?,?,?)")->execute([$orderId,$status,$message,$actor?:null]);queue_order_status_notification($orderId,$actor); }
 function customer_feedback_summary(): array { return ['responses'=>(int)scalar("SELECT COUNT(*) FROM customer_feedback"),'nps'=>(float)(scalar("SELECT COALESCE(AVG(CASE WHEN score>=9 THEN 100 WHEN score<=6 THEN -100 ELSE 0 END),0) FROM customer_feedback")?:0),'rating'=>(float)(scalar("SELECT COALESCE(AVG(rating),0) FROM customer_feedback")?:0),'attention'=>(int)scalar("SELECT COUNT(*) FROM customer_feedback WHERE score<=6 AND status='new'")]; }
 
