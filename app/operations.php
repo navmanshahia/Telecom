@@ -204,10 +204,14 @@ function queue_order_status_notification(int $orderId,int $actor,string $customM
     if(db_table_exists('communications')) queue_email((int)$o['user_id'],null,$orderId,'Order update · '.$status,$message,$actor);
 }
 function notification_stats(): array {
+    if(db_table_exists('users')){
+        foreach(rows("SELECT id FROM users WHERE email_verified_at IS NOT NULL") as $verified) cancel_verification_messages((int)$verified['id']);
+    }
     return [
       'queued'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='queued'"),
       'due'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='queued' AND scheduled_at<=datetime('now')"),
       'sent_today'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='sent' AND date(sent_at)=date('now')"),
+      'logged'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='logged'"),
       'failed'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'")
     ];
 }
@@ -616,6 +620,7 @@ function customer_notification(int $userId,string $title,string $message,string 
 function unread_notification_count(int $userId): int { return (int)scalar("SELECT COUNT(*) FROM customer_notifications WHERE user_id=? AND is_read=0",[$userId]); }
 function customer_360(int $userId): array {
     $u=rows("SELECT * FROM users WHERE id=? LIMIT 1",[$userId])[0]??null;if(!$u)return [];
+    if(!empty($u['email_verified_at'])) cancel_verification_messages($userId);
     return ['user'=>$u,'orders'=>rows("SELECT o.*,p.name provider,d.name deal FROM orders o JOIN providers p ON p.id=o.provider_id JOIN deals d ON d.id=o.deal_id WHERE o.user_id=? ORDER BY o.id DESC",[$userId]),'quotes'=>rows("SELECT * FROM quotes WHERE user_id=? ORDER BY id DESC",[$userId]),'documents'=>rows("SELECT * FROM documents WHERE user_id=? ORDER BY id DESC",[$userId]),'communications'=>rows("SELECT * FROM communications WHERE user_id=? ORDER BY id DESC LIMIT 50",[$userId]),'notifications'=>rows("SELECT * FROM customer_notifications WHERE user_id=? ORDER BY id DESC LIMIT 50",[$userId])];
 }
 function global_command_search(string $q): array {
