@@ -187,6 +187,7 @@ if($page==='sales'){
  $payRates=$u['role']==='salesperson'?salesperson_commission_rates((int)$u['id']):[];
  $salesLedger=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id WHERE lower(cl.sales_agent)=lower(?) ORDER BY cl.id DESC LIMIT 40",[(string)$u['name']]);
  $target=rows("SELECT * FROM sales_targets WHERE lower(sales_agent)=lower(?) AND period=? LIMIT 1",[(string)$u['name'],date('Y-m')])[0]??[];
+ $todayActions=smart_action_queue((string)$u['name']);
  layout_start('Sales portal');
 ?>
 <?php if(!empty($_SESSION['sales_flash'])):?><p class="alert success"><?=e($_SESSION['sales_flash']);unset($_SESSION['sales_flash'])?></p><?php endif;?>
@@ -201,6 +202,10 @@ if($page==='sales'){
  <article class="card"><span>Orders this month</span><strong><?=$d['monthOrders']?></strong></article>
  <article class="card"><span>Activations</span><strong><?=$d['activated']?></strong></article>
 </div>
+<section class="card sales-action-feed">
+ <div class="section-title-inline"><div><span class="eyebrow">TODAY · ACTION FEED</span><h2>What needs my attention.</h2></div><span class="pill"><?=count($todayActions)?> ACTION<?=count($todayActions)===1?'':'S'?></span></div>
+ <div class="sales-action-list"><?php foreach(array_slice($todayActions,0,8) as $act):?><a href="<?=e(url($act['url']))?>" class="sales-action-item <?=e($act['priority'])?>"><span><?=e(strtoupper($act['type']))?></span><div><b><?=e($act['title'])?></b><small><?=e($act['reason'])?></small></div><i>→</i></a><?php endforeach;if(!$todayActions):?><div class="empty-state compact"><b>You're caught up.</b><span>No overdue assigned leads, quote follow-ups or order exceptions right now.</span></div><?php endif;?></div>
+</section>
 
 <?php if($u['role']==='salesperson'):?>
 <section class="card sales-pay-rates">
