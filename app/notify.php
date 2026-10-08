@@ -16,7 +16,7 @@ $result=process_notification_queue($limit);
 $result['renewal_opportunities']=$renewals;
 echo json_encode([
     'time'=>date(DATE_ATOM),
-    'transport'=>envv('MAIL_TRANSPORT','log'),
+    'transport'=>envv('MAIL_TRANSPORT','mail'),
     'automation'=>$automation,
     'result'=>$result
 ],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n";
