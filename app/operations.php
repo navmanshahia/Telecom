@@ -454,7 +454,7 @@ function ensure_platform_schema(): void {
     $addColumn('communication_templates','updated_at','TEXT');
     $addColumn('communication_templates','display_order','INTEGER NOT NULL DEFAULT 100');
     $v5Templates=[
-      ['credit_50',' $50 Credit Processed Successfully','Your $50 SecureLink credit was processed','Hi {{first_name}},\n\nGreat news — your $50 credit has been processed successfully on our side. Please allow the provider billing cycle to reflect it on your account.\n\nIf you have any questions, simply reply to this email.\n\nSecureLink\n{{website}}',10],
+      ['credit_50','$50 Credit Processed Successfully','Your $50 SecureLink credit was processed','Hi {{first_name}},\n\nGreat news — your $50 credit has been processed successfully on our side. Please allow the provider billing cycle to reflect it on your account.\n\nIf you have any questions, simply reply to this email.\n\nSecureLink\n{{website}}',10],
       ['credit_100_today','$100 Credit Processed Successfully Today','Your $100 SecureLink credit was processed today','Hi {{first_name}},\n\nYour $100 credit was processed successfully today. Please allow the provider billing cycle to reflect it on your account.\n\nThank you for choosing SecureLink.\n\nSecureLink\n{{website}}',20],
       ['new_deals','Great New Deals Available','New SecureLink deals are available','Hi {{first_name}},\n\nWe have some great new Internet, Mobility, TV and Security deals available. Feel free to check the latest offers on our website:\n\n{{website}}\n\nIf you want, reply to this email and we can help compare the best options for you.\n\nSecureLink',30],
       ['order_received','Order Request Received','We received your SecureLink request','Hi {{first_name}},\n\nWe received your service request and our team is reviewing it. We will contact you if anything else is needed.\n\nYou can sign in anytime to track your order:\n{{website}}\n\nSecureLink',40],
@@ -752,12 +752,30 @@ function commission_summary_v2(): array {
     return ['pending'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='pending'"),'approved'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='approved'"),'paid'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='paid'"),'chargebacks'=>(float)scalar("SELECT COALESCE(SUM(commission_amount),0) FROM orders WHERE commission_status='void'")];
 }
 function commission_clawback_sync(): void {
-    $active=['activated','completed'];foreach(rows("SELECT o.*,cl.id ledger_id,cl.activated_at,cl.clawback_until,cl.salesperson_amount,cl.status ledger_status,cl.clawback_status FROM orders o JOIN commission_ledger cl ON cl.order_id=o.id") as $x){
+    $days=max(0,(int)envv('COMMISSION_CLAWBACK_DAYS','0'));
+    if($days===0){
+        db()->exec("UPDATE commission_ledger SET status='approved',clawback_status='cleared',clawback_until=NULL WHERE status='hold' AND clawback_status IN ('none','cleared')");
+    }
+    $active=['activated','completed'];
+    foreach(rows("SELECT o.*,cl.id ledger_id,cl.activated_at,cl.clawback_until,cl.salesperson_amount,cl.status ledger_status,cl.clawback_status FROM orders o JOIN commission_ledger cl ON cl.order_id=o.id") as $x){
         $oid=(int)$x['id'];$isActive=in_array($x['status'],$active,true);
-        if($isActive && empty($x['activated_at'])){db()->prepare("UPDATE commission_ledger SET activated_at=datetime('now'),clawback_until=datetime('now','+90 days'),status=CASE WHEN status='pending' THEN 'hold' ELSE status END WHERE id=?")->execute([(int)$x['ledger_id']]);continue;}
-        if(!$isActive && !empty($x['activated_at']) && !empty($x['clawback_until']) && strtotime((string)$x['clawback_until'])>=time() && $x['clawback_status']==='none'){
-            $amt=max(0,(float)$x['salesperson_amount']);db()->prepare("UPDATE commission_ledger SET clawback_amount=?,clawback_status='required',clawback_reason=?,clawback_at=datetime('now'),status=CASE WHEN status='paid' THEN status ELSE 'clawback' END WHERE id=?")->execute([$amt,'Service cancelled before 90-day retention period',(int)$x['ledger_id']]);if($amt>0)db()->prepare("INSERT INTO commission_adjustments(order_id,sales_agent,amount,adjustment_type,reason,status) VALUES(?,?,?,'clawback',?,'open')")->execute([$oid,$x['sales_agent'],-$amt,'90-day cancellation clawback']);continue;}
-        if($isActive && !empty($x['clawback_until']) && strtotime((string)$x['clawback_until'])<time() && $x['clawback_status']==='none' && in_array($x['ledger_status'],['pending','hold'],true))db()->prepare("UPDATE commission_ledger SET status='approved',clawback_status='cleared' WHERE id=?")->execute([(int)$x['ledger_id']]);
+        if($isActive && empty($x['activated_at'])){
+            if($days>0){
+                db()->prepare("UPDATE commission_ledger SET activated_at=datetime('now'),clawback_until=datetime('now',?),status=CASE WHEN status='pending' THEN 'hold' ELSE status END WHERE id=?")->execute(['+'.$days.' days',(int)$x['ledger_id']]);
+            }else{
+                db()->prepare("UPDATE commission_ledger SET activated_at=datetime('now'),clawback_until=NULL,clawback_status='cleared',status=CASE WHEN status IN ('pending','hold') THEN 'approved' ELSE status END WHERE id=?")->execute([(int)$x['ledger_id']]);
+            }
+            continue;
+        }
+        if($days>0 && !$isActive && !empty($x['activated_at']) && !empty($x['clawback_until']) && strtotime((string)$x['clawback_until'])>=time() && $x['clawback_status']==='none'){
+            $amt=max(0,(float)$x['salesperson_amount']);
+            db()->prepare("UPDATE commission_ledger SET clawback_amount=?,clawback_status='required',clawback_reason=?,clawback_at=datetime('now'),status=CASE WHEN status='paid' THEN status ELSE 'clawback' END WHERE id=?")->execute([$amt,'Service cancelled before '.$days.'-day retention period',(int)$x['ledger_id']]);
+            if($amt>0)db()->prepare("INSERT INTO commission_adjustments(order_id,sales_agent,amount,adjustment_type,reason,status) VALUES(?,?,?,'clawback',?,'open')")->execute([$oid,$x['sales_agent'],-$amt,$days.'-day cancellation clawback']);
+            continue;
+        }
+        if($days>0 && $isActive && !empty($x['clawback_until']) && strtotime((string)$x['clawback_until'])<time() && $x['clawback_status']==='none' && in_array($x['ledger_status'],['pending','hold'],true)){
+            db()->prepare("UPDATE commission_ledger SET status='approved',clawback_status='cleared' WHERE id=?")->execute([(int)$x['ledger_id']]);
+        }
     }
 }
 function salesperson_commission_v3(string $name): array {
