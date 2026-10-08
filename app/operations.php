@@ -754,7 +754,8 @@ function commission_summary_v2(): array {
 function commission_clawback_sync(): void {
     $days=max(0,(int)envv('COMMISSION_CLAWBACK_DAYS','0'));
     if($days===0){
-        db()->exec("UPDATE commission_ledger SET status='approved',clawback_status='cleared',clawback_until=NULL WHERE status='hold' AND clawback_status IN ('none','cleared')");
+        db()->exec("UPDATE commission_ledger SET status=CASE WHEN status IN ('hold','clawback') THEN 'approved' ELSE status END,clawback_status='cleared',clawback_until=NULL,clawback_amount=0,clawback_reason=NULL,clawback_at=NULL WHERE status IN ('hold','clawback') OR clawback_status='required'");
+        db()->exec("UPDATE commission_adjustments SET status='waived',resolved_at=COALESCE(resolved_at,datetime('now')) WHERE adjustment_type='clawback' AND status='open'");
     }
     $active=['activated','completed'];
     foreach(rows("SELECT o.*,cl.id ledger_id,cl.activated_at,cl.clawback_until,cl.salesperson_amount,cl.status ledger_status,cl.clawback_status FROM orders o JOIN commission_ledger cl ON cl.order_id=o.id") as $x){
