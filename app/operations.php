@@ -211,9 +211,26 @@ function notification_stats(): array {
       'failed'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'")
     ];
 }
+function sync_notification_communication(array $n,string $status): void {
+    if(!db_table_exists('communications')) return;
+    $where=["kind='email'","delivery_status='queued'","subject=?","message=?"];
+    $params=[(string)$n['subject'],(string)$n['message']];
+    if(!empty($n['user_id'])){$where[]='user_id=?';$params[]=(int)$n['user_id'];}
+    if(!empty($n['order_id'])){$where[]='order_id=?';$params[]=(int)$n['order_id'];}
+    if(!empty($n['lead_id'])){$where[]='lead_id=?';$params[]=(int)$n['lead_id'];}
+    db()->prepare("UPDATE communications SET delivery_status=? WHERE id=(SELECT id FROM communications WHERE ".implode(' AND ',$where)." ORDER BY id DESC LIMIT 1)")
+      ->execute([$status,...$params]);
+}
+function cancel_verification_messages(int $userId,string $reason='Email already verified'): void {
+    if(db_table_exists('notification_queue')) db()->prepare("UPDATE notification_queue SET status='cancelled',last_error=? WHERE user_id=? AND status='queued' AND subject='Verify your SecureLink email'")->execute([$reason,$userId]);
+    if(db_table_exists('communications')) db()->prepare("UPDATE communications SET delivery_status='cancelled' WHERE user_id=? AND kind='email' AND delivery_status='queued' AND subject='Verify your SecureLink email'")->execute([$userId]);
+}
 function process_notification_queue(int $limit=25): array {
-    $limit=max(1,min(100,$limit));$sent=0;$failed=0;$skipped=0;
-    $transport=strtolower((string)envv('MAIL_TRANSPORT','log'));
+    $limit=max(1,min(100,$limit));$sent=0;$failed=0;$skipped=0;$logged=0;
+    $transport=strtolower((string)envv('MAIL_TRANSPORT','mail'));
+    if(db_table_exists('users')){
+        foreach(rows("SELECT id FROM users WHERE email_verified_at IS NOT NULL") as $verified) cancel_verification_messages((int)$verified['id']);
+    }
     $items=rows("SELECT * FROM notification_queue WHERE status='queued' AND scheduled_at<=datetime('now') ORDER BY scheduled_at,id LIMIT ".$limit);
     foreach($items as $n){
         $type=(string)($n['notification_type']??'transactional');
@@ -221,33 +238,43 @@ function process_notification_queue(int $limit=25): array {
             $orderStatus=(string)(scalar("SELECT status FROM orders WHERE id=?",[(int)$n['order_id']])?:'');
             if(!in_array($orderStatus,['submitted','reviewing','need_information'],true)){
                 db()->prepare("UPDATE notification_queue SET status='cancelled',last_error='Order progressed before scheduled follow-up' WHERE id=?")->execute([(int)$n['id']]);
-                continue;
+                sync_notification_communication($n,'cancelled');continue;
             }
         }
         if($type==='lead_followup' && !empty($n['lead_id'])){
             $leadStage=(string)(scalar("SELECT stage FROM leads WHERE id=?",[(int)$n['lead_id']])?:'');
             if(in_array($leadStage,['activated','lost','order'],true)){
                 db()->prepare("UPDATE notification_queue SET status='cancelled',last_error='Lead progressed before scheduled follow-up' WHERE id=?")->execute([(int)$n['id']]);
-                continue;
+                sync_notification_communication($n,'cancelled');continue;
             }
         }
-        if($transport!=='mail'){ $skipped++; continue; }
+        if($transport==='log'){
+            db()->prepare("UPDATE notification_queue SET status='logged',attempts=attempts+1,last_error='MAIL_TRANSPORT=log: delivery not attempted' WHERE id=?")->execute([(int)$n['id']]);
+            sync_notification_communication($n,'logged');$logged++;continue;
+        }
+        if($transport!=='mail'){
+            db()->prepare("UPDATE notification_queue SET status='failed',attempts=attempts+1,last_error=? WHERE id=?")->execute(['Unsupported MAIL_TRANSPORT: '.$transport,(int)$n['id']]);
+            sync_notification_communication($n,'failed');$failed++;continue;
+        }
         $recipient=trim((string)$n['recipient']);
         if($recipient===''||!filter_var($recipient,FILTER_VALIDATE_EMAIL)){
             db()->prepare("UPDATE notification_queue SET status='failed',attempts=attempts+1,last_error=? WHERE id=?")
-              ->execute(['Missing or invalid email recipient',(int)$n['id']]);$failed++;continue;
+              ->execute(['Missing or invalid email recipient',(int)$n['id']]);
+            sync_notification_communication($n,'failed');$failed++;continue;
         }
         $headers="MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
         $from=trim((string)envv('MAIL_FROM',''));
         if($from!=='')$headers.="From: ".$from."\r\n";
         $ok=@mail($recipient,(string)$n['subject'],(string)$n['message'],$headers);
         if($ok){
-            db()->prepare("UPDATE notification_queue SET status='sent',sent_at=datetime('now'),attempts=attempts+1,last_error=NULL WHERE id=?")->execute([(int)$n['id']]);$sent++;
+            db()->prepare("UPDATE notification_queue SET status='sent',sent_at=datetime('now'),attempts=attempts+1,last_error=NULL WHERE id=?")->execute([(int)$n['id']]);
+            sync_notification_communication($n,'sent');$sent++;
         }else{
-            db()->prepare("UPDATE notification_queue SET attempts=attempts+1,last_error=? WHERE id=?")->execute(['mail() returned false',(int)$n['id']]);$failed++;
+            db()->prepare("UPDATE notification_queue SET status='failed',attempts=attempts+1,last_error=? WHERE id=?")->execute(['mail() returned false',(int)$n['id']]);
+            sync_notification_communication($n,'failed');$failed++;
         }
     }
-    return ['sent'=>$sent,'failed'=>$failed,'skipped'=>$skipped];
+    return ['sent'=>$sent,'failed'=>$failed,'logged'=>$logged,'skipped'=>$skipped];
 }
 function track_event(string $event,?string $entityType=null,?int $entityId=null,array $metadata=[]): void {
     try{
@@ -794,7 +821,9 @@ function app_absolute_url(string $path): string {
 function issue_email_verification(int $userId): void {
     ensure_platform_schema();
     $u=rows("SELECT id,name,email,email_verified_at FROM users WHERE id=?",[$userId])[0]??null;
-    if(!$u || !empty($u['email_verified_at'])) return;
+    if(!$u) return;
+    if(!empty($u['email_verified_at'])){ cancel_verification_messages($userId); return; }
+    cancel_verification_messages($userId,'Superseded by a newer verification link');
     db()->prepare("DELETE FROM email_verification_tokens WHERE user_id=? AND used_at IS NULL")->execute([$userId]);
     $token=bin2hex(random_bytes(32));
     db()->prepare("INSERT INTO email_verification_tokens(user_id,token_hash,expires_at) VALUES(?,?,datetime('now','+24 hours'))")
@@ -803,6 +832,7 @@ function issue_email_verification(int $userId): void {
     $subject='Verify your SecureLink email';$message="Hi ".($u['name']?:'there').",\n\nVerify your email to finish securing your SecureLink account:\n".$link."\n\nThis link expires in 24 hours.";
     if(db_table_exists('communications')) queue_email($userId,null,null,$subject,$message,$userId);
     if(db_table_exists('notification_queue')) queue_notification($userId,null,null,$subject,$message,$userId,'email',(string)$u['email']);
+    if(strtolower((string)envv('MAIL_TRANSPORT','mail'))==='mail') process_notification_queue(10);
 }
 function verify_email_token(string $token): bool {
     ensure_platform_schema();
@@ -815,6 +845,7 @@ function verify_email_token(string $token): bool {
         db()->prepare("UPDATE users SET email_verified_at=datetime('now') WHERE id=?")->execute([(int)$row['user_id']]);
         db()->prepare("UPDATE email_verification_tokens SET used_at=datetime('now') WHERE id=?")->execute([(int)$row['id']]);
         db()->commit();
+        cancel_verification_messages((int)$row['user_id'],'Email verified');
         return true;
     }catch(Throwable $e){ if(db()->inTransaction()) db()->rollBack(); return false; }
 }
@@ -830,6 +861,7 @@ function issue_password_reset(string $email): void {
     $subject='Reset your SecureLink password';$message="Hi ".($u['name']?:'there').",\n\nUse this one-time link to reset your SecureLink password:\n".$link."\n\nThis link expires in 60 minutes. If you did not request it, ignore this message.";
     if(db_table_exists('communications')) queue_email((int)$u['id'],null,null,$subject,$message,(int)$u['id']);
     if(db_table_exists('notification_queue')) queue_notification((int)$u['id'],null,null,$subject,$message,(int)$u['id'],'email',(string)$u['email']);
+    if(strtolower((string)envv('MAIL_TRANSPORT','mail'))==='mail') process_notification_queue(10);
 }
 function reset_password_with_token(string $token,string $password): bool {
     ensure_platform_schema();
