@@ -896,9 +896,19 @@ function operations_centre(): array {
 }
 function smart_action_queue(?string $salesAgent=null): array {
     $out=[];$agentSql=$salesAgent!==null?" AND sales_agent=?":"";$params=$salesAgent!==null?[$salesAgent]:[];
-    foreach(rows("SELECT * FROM leads WHERE stage NOT IN ('activated','lost') AND updated_at<datetime('now','-24 hours')".$agentSql." ORDER BY lead_score DESC LIMIT 30",$params) as $l)$out[]=['priority'=>$l['lead_score']>=75?'urgent':'high','type'=>'Lead','title'=>'Follow up '.$l['name'],'reason'=>'No lead activity in 24+ hours','url'=>'?page=admin&view=leads&edit='.$l['id']];
-    foreach(rows("SELECT * FROM quotes WHERE viewed_at IS NOT NULL AND accepted_at IS NULL AND status IN ('sent','viewed') AND viewed_at<datetime('now','-6 hours') ORDER BY viewed_at LIMIT 20") as $q)$out[]=['priority'=>'high','type'=>'Quote','title'=>'Follow up '.$q['customer_name'],'reason'=>'Quote viewed but not accepted','url'=>'?page=admin&view=quotes'];
-    foreach(rows("SELECT o.*,u.name customer FROM orders o JOIN users u ON u.id=o.user_id WHERE o.status='submitted_to_provider' AND (o.provider_reference IS NULL OR o.provider_reference='') AND o.updated_at<datetime('now','-12 hours') ORDER BY o.updated_at LIMIT 20") as $o)$out[]=['priority'=>'urgent','type'=>'Order','title'=>'Provider reference missing · '.$o['customer'],'reason'=>$o['public_id'].' submitted 12+ hours ago','url'=>'?page=admin&view=operations'];
+    foreach(rows("SELECT * FROM leads WHERE stage NOT IN ('activated','lost') AND updated_at<datetime('now','-24 hours')".$agentSql." ORDER BY lead_score DESC LIMIT 30",$params) as $l){
+        $out[]=['priority'=>$l['lead_score']>=75?'urgent':'high','type'=>'Lead','title'=>'Follow up '.$l['name'],'reason'=>'No lead activity in 24+ hours','url'=>$salesAgent!==null?'?page=sales':'?page=admin&view=leads&edit='.$l['id']];
+    }
+    $quoteSql="SELECT q.* FROM quotes q LEFT JOIN leads l ON l.id=q.lead_id WHERE q.viewed_at IS NOT NULL AND q.accepted_at IS NULL AND q.status IN ('sent','viewed') AND q.viewed_at<datetime('now','-6 hours')";
+    $quoteParams=[];
+    if($salesAgent!==null){$quoteSql.=" AND lower(COALESCE(l.sales_agent,''))=lower(?)";$quoteParams[]=$salesAgent;}
+    $quoteSql.=" ORDER BY q.viewed_at LIMIT 20";
+    foreach(rows($quoteSql,$quoteParams) as $q)$out[]=['priority'=>'high','type'=>'Quote','title'=>'Follow up '.$q['customer_name'],'reason'=>'Quote viewed but not accepted','url'=>$salesAgent!==null?'?page=sales':'?page=admin&view=quotes'];
+    $orderSql="SELECT o.*,u.name customer FROM orders o JOIN users u ON u.id=o.user_id WHERE o.status='submitted_to_provider' AND (o.provider_reference IS NULL OR o.provider_reference='') AND o.updated_at<datetime('now','-12 hours')";
+    $orderParams=[];
+    if($salesAgent!==null){$orderSql.=" AND lower(COALESCE(o.sales_agent,''))=lower(?)";$orderParams[]=$salesAgent;}
+    $orderSql.=" ORDER BY o.updated_at LIMIT 20";
+    foreach(rows($orderSql,$orderParams) as $o)$out[]=['priority'=>'urgent','type'=>'Order','title'=>'Provider reference missing · '.$o['customer'],'reason'=>$o['public_id'].' submitted 12+ hours ago','url'=>$salesAgent!==null?'?page=sales':'?page=admin&view=operations'];
     return array_slice($out,0,60);
 }
 function salesperson_performance(): array {
