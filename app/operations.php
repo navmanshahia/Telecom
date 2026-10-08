@@ -949,9 +949,63 @@ function send_customer_email_v5(int $userId,string $subject,string $message,int 
 }
 function customer_upgrade_recommendations(int $userId,int $limit=12): array {
     $services=customer_savings($userId)['services'];
-    $current=[];foreach($services as $s){$cat=strtolower((string)$s['category']);$current[$cat]=isset($current[$cat])?min($current[$cat],(float)$s['monthly']):(float)$s['monthly'];}
+    $current=[];
+    foreach($services as $s){
+        $cat=strtolower((string)$s['category']);
+        $price=(float)$s['monthly'];
+        $current[$cat]=isset($current[$cat])?min($current[$cat],$price):$price;
+    }
     $offers=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' AND p.status='active' AND (d.starts_at IS NULL OR d.starts_at<=datetime('now')) AND (d.expires_at IS NULL OR d.expires_at>=datetime('now')) ORDER BY d.category,d.monthly_price,d.id DESC LIMIT 100");
-    $out=[];foreach($offers as $d){$cat=strtolower((string)$d['category']);$d['current_monthly']=$current[$cat]??null;$d['monthly_difference']=$d['current_monthly']!==null?((float)$d['current_monthly']-(float)$d['monthly_price']):null;$d['recommendation']=$d['current_monthly']===null?'Add a new service':($d['monthly_difference']>0?'Potentially save 
+    $out=[];
+    foreach($offers as $d){
+        $cat=strtolower((string)$d['category']);
+        $d['current_monthly']=$current[$cat]??null;
+        $d['monthly_difference']=$d['current_monthly']!==null?((float)$d['current_monthly']-(float)$d['monthly_price']):null;
+        if($d['current_monthly']===null)$d['recommendation']='Add a new service';
+        elseif($d['monthly_difference']>0)$d['recommendation']='Potentially save $'.number_format((float)$d['monthly_difference'],2).'/mo';
+        else $d['recommendation']='Compare features & value';
+        $out[]=$d;
+        if(count($out)>=$limit)break;
+    }
+    return $out;
+}
+function admin_exception_centre_v5(): array {
+    $counts=[
+      'unassigned_leads'=>(int)scalar("SELECT COUNT(*) FROM leads WHERE stage NOT IN ('activated','lost') AND COALESCE(trim(sales_agent),'')=''"),
+      'overdue_followups'=>(int)scalar("SELECT COUNT(*) FROM leads WHERE stage NOT IN ('activated','lost') AND next_follow_up_at IS NOT NULL AND next_follow_up_at<datetime('now')"),
+      'stuck_orders'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status NOT IN ('completed','cancelled','rejected') AND updated_at<datetime('now','-24 hours')"),
+      'missing_provider_ref'=>(int)scalar("SELECT COUNT(*) FROM orders WHERE status IN ('submitted_to_provider','appointment_confirmed','activated') AND COALESCE(trim(provider_reference),'')=''"),
+      'pending_documents'=>(int)scalar("SELECT COUNT(*) FROM documents WHERE status IN ('requested','received','needs_replacement')"),
+      'failed_email'=>(int)scalar("SELECT COUNT(*) FROM notification_queue WHERE status='failed'"),
+      'unverified_customers'=>(int)scalar("SELECT COUNT(*) FROM users WHERE role='customer' AND email_verified_at IS NULL"),
+      'quotes_waiting'=>(int)scalar("SELECT COUNT(*) FROM quotes WHERE status IN ('sent','viewed') AND created_at<datetime('now','-1 day')")
+    ];
+    $items=[
+      'orders'=>rows("SELECT o.id,o.public_id,o.status,o.updated_at,u.name customer,p.name provider FROM orders o JOIN users u ON u.id=o.user_id JOIN providers p ON p.id=o.provider_id WHERE o.status NOT IN ('completed','cancelled','rejected') AND (o.updated_at<datetime('now','-24 hours') OR (o.status IN ('submitted_to_provider','appointment_confirmed','activated') AND COALESCE(trim(o.provider_reference),'')='')) ORDER BY o.updated_at LIMIT 25"),
+      'leads'=>rows("SELECT id,name,stage,sales_agent,next_follow_up_at,lead_score FROM leads WHERE stage NOT IN ('activated','lost') AND (COALESCE(trim(sales_agent),'')='' OR (next_follow_up_at IS NOT NULL AND next_follow_up_at<datetime('now'))) ORDER BY lead_score DESC LIMIT 25"),
+      'emails'=>rows("SELECT nq.*,u.name customer FROM notification_queue nq LEFT JOIN users u ON u.id=nq.user_id WHERE nq.status='failed' ORDER BY nq.id DESC LIMIT 20")
+    ];
+    return compact('counts','items');
+}
+function payroll_centre_v5(): array {
+    $totals=[
+      'pending'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status IN ('pending','hold')"),
+      'approved'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status='approved'"),
+      'paid_month'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status='paid' AND paid_at>=datetime('now','start of month')"),
+      'company'=>(float)scalar("SELECT COALESCE(SUM(company_amount),0) FROM commission_ledger")
+    ];
+    $agents=rows("SELECT COALESCE(NULLIF(sales_agent,''),'Unassigned') sales_agent,COUNT(*) orders,SUM(CASE WHEN status IN ('pending','hold') THEN salesperson_amount ELSE 0 END) pending,SUM(CASE WHEN status='approved' THEN salesperson_amount ELSE 0 END) approved,SUM(CASE WHEN status='paid' THEN salesperson_amount ELSE 0 END) paid,SUM(company_amount) company FROM commission_ledger GROUP BY COALESCE(NULLIF(sales_agent,''),'Unassigned') ORDER BY approved DESC,pending DESC");
+    $recent=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id ORDER BY cl.id DESC LIMIT 150");
+    return compact('totals','agents','recent');
+}
+function payroll_mark_paid_v5(int $ledgerId,string $reference,int $actor): void {
+    $row=rows("SELECT * FROM commission_ledger WHERE id=? LIMIT 1",[$ledgerId])[0]??null;
+    if(!$row) throw new RuntimeException('Commission entry not found.');
+    if(!in_array((string)$row['status'],['approved','pending','hold'],true)) throw new RuntimeException('This commission cannot be marked paid from its current status.');
+    db()->prepare("UPDATE commission_ledger SET status='paid',paid_at=datetime('now'),payment_reference=? WHERE id=?")->execute([trim($reference),$ledgerId]);
+    db()->prepare("UPDATE orders SET commission_status='paid' WHERE id=?")->execute([(int)$row['order_id']]);
+    audit($actor,'salesperson_commission_paid','commission_ledger',$ledgerId,['reference'=>$reference,'amount'=>$row['salesperson_amount'],'sales_agent'=>$row['sales_agent']]);
+}
 function sync_customer_order_event(int $orderId,string $status,int $actor=0): void { $message=order_next_step(['status'=>$status]);db()->prepare("INSERT INTO order_status_events(order_id,status,message,actor_user_id) VALUES(?,?,?,?)")->execute([$orderId,$status,$message,$actor?:null]);queue_order_status_notification($orderId,$actor); }
 function customer_feedback_summary(): array { return ['responses'=>(int)scalar("SELECT COUNT(*) FROM customer_feedback"),'nps'=>(float)(scalar("SELECT COALESCE(AVG(CASE WHEN score>=9 THEN 100 WHEN score<=6 THEN -100 ELSE 0 END),0) FROM customer_feedback")?:0),'rating'=>(float)(scalar("SELECT COALESCE(AVG(rating),0) FROM customer_feedback")?:0),'attention'=>(int)scalar("SELECT COUNT(*) FROM customer_feedback WHERE score<=6 AND status='new'")]; }
 
