@@ -486,6 +486,18 @@ function ensure_platform_schema(): void {
       db()->prepare("INSERT OR IGNORE INTO communication_templates(template_key,name,subject,message,channel,active,display_order,updated_at) VALUES(?,?,?,?,'email',1,?,datetime('now'))")->execute($t);
     }
     db()->exec("CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id))");
+    $addColumn('commission_ledger','commission_tier',"TEXT");
+    $addColumn('commission_ledger','commission_rate',"REAL");
+    $addColumn('commission_ledger','activation_sequence',"INTEGER");
+    db()->exec("CREATE TABLE IF NOT EXISTS sales_commission_tiers(tier_key TEXT PRIMARY KEY,name TEXT NOT NULL,min_prior_activations INTEGER NOT NULL DEFAULT 0,display_order INTEGER NOT NULL DEFAULT 100,active INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS sales_commission_tier_rates(tier_key TEXT NOT NULL REFERENCES sales_commission_tiers(tier_key) ON DELETE CASCADE,product_key TEXT NOT NULL,amount REAL NOT NULL DEFAULT 0,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(tier_key,product_key))");
+    db()->prepare("INSERT OR IGNORE INTO sales_commission_tiers(tier_key,name,min_prior_activations,display_order,active) VALUES('standard','Standard',0,10,1)")->execute();
+    db()->prepare("INSERT OR IGNORE INTO sales_commission_tiers(tier_key,name,min_prior_activations,display_order,active) VALUES('premier','Premier',10,20,1)")->execute();
+    $tierSeeds=[
+      ['standard','internet',70],['standard','security',70],['standard','tv',70],['standard','homephone',12],['standard','telus_mobility',60],['standard','koodo_mobility',35],
+      ['premier','internet',80],['premier','security',80],['premier','tv',80],['premier','homephone',15],['premier','telus_mobility',70],['premier','koodo_mobility',40]
+    ];
+    foreach($tierSeeds as $tr) db()->prepare("INSERT OR IGNORE INTO sales_commission_tier_rates(tier_key,product_key,amount) VALUES(?,?,?)")->execute($tr);
     $addColumn('commission_ledger','activated_at','TEXT');
     $addColumn('commission_ledger','clawback_until','TEXT');
     $addColumn('commission_ledger','clawback_amount','REAL NOT NULL DEFAULT 0');
@@ -824,6 +836,50 @@ function salesperson_commission_rates(int $userId): array {
     }
     return $out;
 }
+function sales_commission_tiers(): array {
+    ensure_platform_schema();
+    $tiers=rows("SELECT * FROM sales_commission_tiers WHERE active=1 ORDER BY min_prior_activations,display_order");
+    foreach($tiers as &$t){
+        $rates=[];
+        foreach(rows("SELECT product_key,amount FROM sales_commission_tier_rates WHERE tier_key=?",[$t['tier_key']]) as $r)$rates[(string)$r['product_key']]=(float)$r['amount'];
+        $t['rates']=$rates;
+    }
+    unset($t);
+    return $tiers;
+}
+function sales_commission_tier_rate_map(string $tierKey): array {
+    $out=[];
+    foreach(rows("SELECT product_key,amount FROM sales_commission_tier_rates WHERE tier_key=?",[$tierKey]) as $r)$out[(string)$r['product_key']]=(float)$r['amount'];
+    return $out;
+}
+function salesperson_monthly_activation_count(string $agent,?string $month=null,?int $excludeOrderId=null): int {
+    $month=$month?:date('Y-m');
+    $sql="SELECT COUNT(*) FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id WHERE lower(cl.sales_agent)=lower(?) AND cl.earned_at IS NOT NULL AND strftime('%Y-%m',cl.earned_at)=?";
+    $params=[$agent,$month];
+    if($excludeOrderId){$sql.=" AND cl.order_id<>?";$params[]=$excludeOrderId;}
+    return (int)scalar($sql,$params);
+}
+function salesperson_tier_for_prior_activations(int $prior): array {
+    $tiers=sales_commission_tiers();$chosen=$tiers[0]??['tier_key'=>'standard','name'=>'Standard','min_prior_activations'=>0,'rates'=>[]];
+    foreach($tiers as $t) if($prior>=(int)$t['min_prior_activations']) $chosen=$t;
+    return $chosen;
+}
+function salesperson_current_tier(array $u): array {
+    $activations=salesperson_monthly_activation_count((string)$u['name']);
+    $tier=salesperson_tier_for_prior_activations($activations);
+    $next=null;
+    foreach(sales_commission_tiers() as $t){if((int)$t['min_prior_activations']>$activations){$next=$t;break;}}
+    return ['tier_key'=>$tier['tier_key'],'tier_name'=>$tier['name'],'activations'=>$activations,'rates'=>$tier['rates'],'next'=>$next,'remaining'=>$next?max(0,(int)$next['min_prior_activations']-$activations):0];
+}
+function salesperson_effective_commission_rates(array $u): array {
+    $tier=salesperson_current_tier($u);$overrides=salesperson_commission_rates((int)$u['id']);$out=[];
+    foreach(salesperson_commission_products() as $key=>$label){
+        $override=$overrides[$key]??null;$hasOverride=$override&&$override['configured']&&$override['active'];
+        $amount=$hasOverride?(float)$override['amount']:(float)($tier['rates'][$key]??0);
+        $out[$key]=['key'=>$key,'label'=>$label,'amount'=>$amount,'override'=>$hasOverride,'tier_key'=>$hasOverride?'custom':$tier['tier_key'],'tier_name'=>$hasOverride?'Custom':$tier['tier_name']];
+    }
+    return $out;
+}
 function salesperson_commission_product_key(array $order): string {
     $category=strtolower(trim((string)($order['category']??'')));
     $category=str_replace([' ','-'],'_',$category);
@@ -838,15 +894,21 @@ function salesperson_commission_product_key(array $order): string {
     }
     return '';
 }
+function salesperson_commission_resolution(array $order): ?array {
+    $agent=trim((string)($order['sales_agent']??''));if($agent==='')return null;
+    $uid=(int)(scalar("SELECT id FROM users WHERE role='salesperson' AND lower(name)=lower(?) ORDER BY id LIMIT 1",[$agent])?:0);if(!$uid)return null;
+    $key=salesperson_commission_product_key($order);if($key==='')return null;
+    $override=rows("SELECT amount FROM salesperson_commission_rates WHERE user_id=? AND product_key=? AND active=1 LIMIT 1",[$uid,$key])[0]??null;
+    $isEarned=in_array((string)($order['status']??''),['activated','completed'],true);
+    $prior=salesperson_monthly_activation_count($agent,date('Y-m'),(int)($order['id']??0));
+    $tier=salesperson_tier_for_prior_activations($prior);
+    $sequence=$isEarned?$prior+1:null;
+    if($override!==null)return ['amount'=>max(0,(float)$override['amount']),'tier'=>'custom','tier_name'=>'Custom','rate'=>max(0,(float)$override['amount']),'sequence'=>$sequence,'product_key'=>$key];
+    $amount=max(0,(float)($tier['rates'][$key]??0));
+    return ['amount'=>$amount,'tier'=>(string)$tier['tier_key'],'tier_name'=>(string)$tier['name'],'rate'=>$amount,'sequence'=>$sequence,'product_key'=>$key];
+}
 function salesperson_commission_rate_for_order(array $order): ?float {
-    $agent=trim((string)($order['sales_agent']??''));
-    if($agent==='') return null;
-    $uid=(int)(scalar("SELECT id FROM users WHERE role='salesperson' AND lower(name)=lower(?) ORDER BY id LIMIT 1",[$agent])?:0);
-    if(!$uid) return null;
-    $key=salesperson_commission_product_key($order);
-    if($key==='') return null;
-    $row=rows("SELECT amount FROM salesperson_commission_rates WHERE user_id=? AND product_key=? AND active=1 LIMIT 1",[$uid,$key])[0]??null;
-    return $row===null?null:max(0,(float)$row['amount']);
+    $r=salesperson_commission_resolution($order);return $r===null?null:(float)$r['amount'];
 }
 function resync_salesperson_open_commissions(int $userId): void {
     $name=(string)(scalar("SELECT name FROM users WHERE id=? AND role='salesperson'",[$userId])?:'');
@@ -855,14 +917,20 @@ function resync_salesperson_open_commissions(int $userId): void {
 }
 
 function sync_commission_ledger(int $orderId): void {
-    $o=rows("SELECT o.*,p.name provider_name,d.name deal_name,cr.salesperson_percent FROM orders o LEFT JOIN providers p ON p.id=o.provider_id LEFT JOIN deals d ON d.id=o.deal_id LEFT JOIN commission_rules cr ON cr.id=(SELECT id FROM commission_rules WHERE provider_id=o.provider_id AND active=1 AND (lower(category)=lower(o.category) OR category IS NULL OR category='') ORDER BY CASE WHEN lower(category)=lower(o.category) THEN 0 ELSE 1 END,id DESC LIMIT 1) WHERE o.id=? LIMIT 1",[$orderId])[0]??null;if(!$o)return;
-    $gross=commission_for_order_v2($orderId);
-    $personal=salesperson_commission_rate_for_order($o);
-    $pct=max(0,min(100,(float)($o['salesperson_percent']??0)));
-    $sales=$personal!==null?$personal:($gross*$pct/100);
-    $company=$gross-$sales;
-    $status=(string)($o['commission_status']??'pending');
-    db()->prepare("INSERT INTO commission_ledger(order_id,sales_agent,provider_id,category,gross_amount,salesperson_amount,company_amount,status,earned_at,paid_at) VALUES(?,?,?,?,?,?,?,?,CASE WHEN ? IN ('activated','completed') THEN datetime('now') END,CASE WHEN ?='paid' THEN datetime('now') END) ON CONFLICT(order_id) DO UPDATE SET sales_agent=excluded.sales_agent,provider_id=excluded.provider_id,category=excluded.category,gross_amount=excluded.gross_amount,salesperson_amount=excluded.salesperson_amount,company_amount=excluded.company_amount,status=CASE WHEN commission_ledger.status IN ('hold','clawback','paid') AND excluded.status='pending' THEN commission_ledger.status ELSE excluded.status END,earned_at=COALESCE(commission_ledger.earned_at,excluded.earned_at),paid_at=CASE WHEN excluded.status='paid' THEN COALESCE(commission_ledger.paid_at,datetime('now')) ELSE commission_ledger.paid_at END")->execute([$orderId,$o['sales_agent'],$o['provider_id'],$o['category'],$gross,$sales,$company,$status,$o['status'],$status]);
+    $o=rows("SELECT o.*,p.name provider_name,d.name deal_name,cr.salesperson_percent FROM orders o LEFT JOIN providers p ON p.id=o.provider_id LEFT JOIN deals d ON d.id=o.deal_id LEFT JOIN commission_rules cr ON cr.id=(SELECT id FROM commission_rules WHERE provider_id=o.provider_id AND active=1 AND (lower(category)=lower(o.category) OR category IS NULL OR category='') ORDER BY CASE WHEN lower(category)=lower(o.category) THEN 0 ELSE 1 END,id DESC LIMIT 1) WHERE o.id=? LIMIT 1",[$orderId])[0]??null;
+    if(!$o)return;
+    $gross=commission_for_order_v2($orderId);$existing=rows("SELECT * FROM commission_ledger WHERE order_id=? LIMIT 1",[$orderId])[0]??null;
+    $earned=in_array((string)$o['status'],['activated','completed'],true);
+    if($existing && !empty($existing['earned_at'])){
+        $sales=(float)$existing['salesperson_amount'];$tier=(string)($existing['commission_tier']?:'legacy');$rate=(float)($existing['commission_rate']??$sales);$sequence=$existing['activation_sequence']!==null?(int)$existing['activation_sequence']:null;
+    }else{
+        $resolution=salesperson_commission_resolution($o);
+        $pct=max(0,min(100,(float)($o['salesperson_percent']??0)));
+        $sales=$resolution!==null?(float)$resolution['amount']:($gross*$pct/100);
+        $tier=$resolution['tier']??'global';$rate=$resolution['rate']??$sales;$sequence=$earned?($resolution['sequence']??null):null;
+    }
+    $company=$gross-$sales;$status=(string)($o['commission_status']??'pending');
+    db()->prepare("INSERT INTO commission_ledger(order_id,sales_agent,provider_id,category,gross_amount,salesperson_amount,company_amount,status,earned_at,paid_at,commission_tier,commission_rate,activation_sequence) VALUES(?,?,?,?,?,?,?,?,CASE WHEN ? IN ('activated','completed') THEN datetime('now') END,CASE WHEN ?='paid' THEN datetime('now') END,?,?,?) ON CONFLICT(order_id) DO UPDATE SET sales_agent=excluded.sales_agent,provider_id=excluded.provider_id,category=excluded.category,gross_amount=excluded.gross_amount,salesperson_amount=CASE WHEN commission_ledger.earned_at IS NOT NULL THEN commission_ledger.salesperson_amount ELSE excluded.salesperson_amount END,company_amount=CASE WHEN commission_ledger.earned_at IS NOT NULL THEN excluded.gross_amount-commission_ledger.salesperson_amount ELSE excluded.company_amount END,status=CASE WHEN commission_ledger.status IN ('hold','clawback','paid') AND excluded.status='pending' THEN commission_ledger.status ELSE excluded.status END,earned_at=COALESCE(commission_ledger.earned_at,excluded.earned_at),paid_at=CASE WHEN excluded.status='paid' THEN COALESCE(commission_ledger.paid_at,datetime('now')) ELSE commission_ledger.paid_at END,commission_tier=CASE WHEN commission_ledger.earned_at IS NOT NULL THEN COALESCE(commission_ledger.commission_tier,'legacy') ELSE excluded.commission_tier END,commission_rate=CASE WHEN commission_ledger.earned_at IS NOT NULL THEN COALESCE(commission_ledger.commission_rate,commission_ledger.salesperson_amount) ELSE excluded.commission_rate END,activation_sequence=COALESCE(commission_ledger.activation_sequence,excluded.activation_sequence)")->execute([$orderId,$o['sales_agent'],$o['provider_id'],$o['category'],$gross,$sales,$company,$status,$o['status'],$status,$tier,$rate,$sequence]);
 }
 function commission_payroll_v3(): array {
     return ['totals'=>['gross'=>(float)scalar("SELECT COALESCE(SUM(gross_amount),0) FROM commission_ledger"),'salesperson'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger"),'company'=>(float)scalar("SELECT COALESCE(SUM(company_amount),0) FROM commission_ledger"),'payable'=>(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE status IN ('pending','approved')")],'agents'=>rows("SELECT COALESCE(NULLIF(sales_agent,''),'Unassigned') sales_agent,COUNT(*) orders,SUM(gross_amount) gross,SUM(salesperson_amount) payable,SUM(company_amount) company FROM commission_ledger GROUP BY COALESCE(NULLIF(sales_agent,''),'Unassigned') ORDER BY gross DESC"),'recent'=>rows("SELECT cl.*,o.public_id,p.name provider FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id ORDER BY cl.id DESC LIMIT 100")];
