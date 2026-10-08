@@ -1435,3 +1435,38 @@ body{overflow-x:hidden}
 .renewal-grid,.household-grid,.promo-admin-grid,.renewal-admin-grid,.retention-grid,.feedback-admin{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.renewal-card>strong{display:block;font-size:42px;margin:15px 0}.renewal-card>strong small{font-size:11px}.member-avatar{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#101828;color:#fff;font-weight:900}.preference-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.preference-grid>button{grid-column:1/-1}.switch-row{display:flex;align-items:center;gap:10px;padding:8px 0}.switch-row input{width:auto}.retention-hero,.feedback-hero{padding:28px;border-radius:26px;margin-bottom:16px;background:linear-gradient(135deg,#101828,#344054);color:#fff}.retention-hero h1,.feedback-hero h1{font-size:clamp(34px,5vw,58px);margin:8px 0}.order-customer-actions{display:flex;gap:16px;margin-top:12px;font-size:11px}.order-customer-actions a{color:#475467}.session-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #eaecf0}
 @media(max-width:850px){.renewal-grid,.household-grid,.promo-admin-grid,.renewal-admin-grid,.retention-grid,.feedback-admin{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.renewal-grid,.household-grid,.promo-admin-grid,.renewal-admin-grid,.retention-grid,.feedback-admin,.preference-grid{grid-template-columns:1fr}}
+
+/* Sales Portal V3 — personalized product payouts */
+.sales-pay-rates{margin:22px 0;padding:26px}
+.sales-pay-rates h2{margin:5px 0 0}
+.pay-rate-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:20px}
+.pay-rate-grid article{padding:18px;border:1px solid var(--line,#e5e7eb);border-radius:16px;background:linear-gradient(145deg,#fff,#f7f8fb)}
+.pay-rate-grid article.configured{box-shadow:inset 0 0 0 1px rgba(77,52,196,.08)}
+.pay-rate-grid span,.pay-rate-grid small{display:block;color:var(--muted,#6b7280)}
+.pay-rate-grid strong{display:block;font-size:27px;letter-spacing:-.04em;margin:7px 0 3px}
+.pay-rate-grid .unset strong{font-size:17px;color:#7b8497}
+.salesperson-admin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
+.salesperson-admin-card{min-width:0}
+.commission-rate-editor{margin-top:20px;border-top:1px solid var(--line,#e5e7eb);padding-top:15px}
+.commission-rate-editor summary{cursor:pointer;font-weight:800;margin-bottom:16px}
+.commission-rate-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.commission-rate-grid label{padding:13px;border:1px solid var(--line,#e5e7eb);border-radius:13px;background:rgba(127,127,127,.035)}
+.commission-rate-grid label>span{display:block;font-weight:800;margin-bottom:8px}
+.money-input{display:flex;align-items:center;gap:7px}
+.money-input b{font-size:18px}
+.money-input input{min-width:0;width:100%}
+.commission-rate-grid small{display:block;margin-top:5px;color:var(--muted,#6b7280)}
+.commission-rate-readonly{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:16px}
+.commission-rate-readonly span{display:flex;justify-content:space-between;gap:10px;padding:11px;border:1px solid var(--line,#e5e7eb);border-radius:12px}
+.sales-order strong small{display:block;font-size:9px;font-weight:600;color:var(--muted,#6b7280);margin-top:2px}
+.sales-quote-builder{margin-top:18px;padding-top:18px;border-top:1px solid var(--line,#e5e7eb)}
+.sales-quote-builder select[multiple]{min-height:150px}
+@media(max-width:760px){
+ .pay-rate-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .salesperson-admin-grid{grid-template-columns:1fr}
+ .commission-rate-grid,.commission-rate-readonly{grid-template-columns:1fr}
+}
+@media(max-width:430px){
+ .pay-rate-grid{grid-template-columns:1fr}
+ .sales-pay-rates{padding:18px}
+}
