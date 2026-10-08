@@ -40,9 +40,11 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     $_SESSION['admin_flash']='Could not create salesperson: temporary password must be at least 12 characters.';
     $_SESSION['admin_flash_type']='error';
   }elseif((int)scalar("SELECT COUNT(*) FROM users WHERE lower(email)=lower(?)",[$email])>0){
-    $existing=rows("SELECT role,status FROM users WHERE lower(email)=lower(?) LIMIT 1",[$email])[0]??[];
+    $existing=rows("SELECT id,name,email,role,status FROM users WHERE lower(email)=lower(?) LIMIT 1",[$email])[0]??[];
     $_SESSION['admin_flash']='Could not create salesperson: that email is already used by an existing '.($existing['role']??'user').' account'.(!empty($existing['status'])?' ('.$existing['status'].')':'').'.';
     $_SESSION['admin_flash_type']='error';
+    if(($existing['role']??'')==='customer') $_SESSION['salesperson_convert_candidate']=(int)$existing['id'];
+    else unset($_SESSION['salesperson_convert_candidate']);
   }else{
     try{
       db()->beginTransaction();
@@ -84,6 +86,34 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   resync_salesperson_open_commissions($id);
   audit((int)$a['id'],'salesperson_commission_save','user',$id,['salesperson'=>$target['name']]);
   $_SESSION['admin_flash']='Commission rates saved for '.$target['name'].'. Open/unpaid orders were recalculated.';
+ }
+ if($act==='customer_promote_salesperson'){
+  if(!in_array($a['role'],['owner','admin'],true)){http_response_code(403);exit('Owner/admin required.');}
+  $customer=rows("SELECT * FROM users WHERE id=? AND role='customer' LIMIT 1",[$id])[0]??null;
+  if(!$customer){
+    $_SESSION['admin_flash']='Could not convert account: customer was not found or is already a salesperson.';
+    $_SESSION['admin_flash_type']='error';
+  }else{
+    try{
+      db()->beginTransaction();
+      db()->prepare("UPDATE users SET role='salesperson',status='approved',approved_at=COALESCE(approved_at,datetime('now')),email_verified_at=COALESCE(email_verified_at,datetime('now')) WHERE id=?")->execute([$id]);
+      db()->prepare("INSERT OR IGNORE INTO salesperson_profiles(user_id,display_name,active,commission_percent) VALUES(?,?,1,0)")->execute([$id,(string)$customer['name']]);
+      $converted=rows("SELECT id,name,email,role,status FROM users WHERE id=? LIMIT 1",[$id])[0]??null;
+      if(!$converted || $converted['role']!=='salesperson') throw new RuntimeException('Role conversion could not be confirmed.');
+      db()->commit();
+      cancel_verification_messages($id,'Account converted to salesperson');
+      audit((int)$a['id'],'customer_promote_salesperson','user',$id,['from_role'=>'customer','to_role'=>'salesperson','email'=>$customer['email']]);
+      $_SESSION['admin_flash']='Converted '.$customer['name'].' to salesperson. Their existing password and account history were preserved.';
+      $_SESSION['admin_flash_type']='success';
+      unset($_SESSION['salesperson_convert_candidate']);
+    }catch(Throwable $ex){
+      if(db()->inTransaction()) db()->rollBack();
+      error_log('SecureLink customer_promote_salesperson: '.$ex->getMessage());
+      $_SESSION['admin_flash']='Could not convert customer to salesperson: '.$ex->getMessage();
+      $_SESSION['admin_flash_type']='error';
+    }
+  }
+  redirect(url('?page=admin&view=salespeople'));
  }
  if($act==='customer_status'){ $status=$_POST['status']??''; if(!in_array($status,['pending','approved','rejected','suspended','blocked'],true)){http_response_code(400);exit('Invalid customer status.');} $target=db()->prepare("SELECT id,role,status FROM users WHERE id=?");$target->execute([$id]);$customer=$target->fetch();if(!$customer||$customer['role']!=='customer'){http_response_code(404);exit('Customer not found.');} db()->prepare("UPDATE users SET status=?,approved_at=CASE WHEN ?='approved' THEN COALESCE(approved_at,datetime('now')) ELSE approved_at END WHERE id=?")->execute([$status,$status,$id]);audit((int)$a['id'],'customer_status','user',$id,['from'=>$customer['status'],'to'=>$status]);}
  if($act==='customer_resend_verification'){issue_email_verification($id);audit((int)$a['id'],'email_verification_queued','user',$id);}
@@ -196,6 +226,20 @@ elseif($view==='salescontrol'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM l
 elseif($view==='salespeople'){ $staff=rows("SELECT u.*, (SELECT COUNT(*) FROM leads l WHERE lower(l.sales_agent)=lower(u.name)) lead_count,(SELECT COUNT(*) FROM orders o WHERE lower(o.sales_agent)=lower(u.name)) order_count,(SELECT COALESCE(SUM(cl.salesperson_amount),0) FROM commission_ledger cl WHERE lower(cl.sales_agent)=lower(u.name) AND cl.status IN ('pending','hold','approved','paid')) salesperson_commission FROM users u WHERE u.role='salesperson' ORDER BY u.name");?>
 <div class="pagehead"><div><span class="eyebrow">SALES TEAM</span><h1>Salesperson accounts & pay rates.</h1><p class="muted">Create logins, control access and set a different fixed payout for every salesperson and product type.</p></div><a class="button secondary" href="<?=e(url('?page=sales'))?>">Open sales portal</a></div>
 <?php if(!empty($_SESSION['admin_flash'])):$flashType=$_SESSION['admin_flash_type']??'success';?><div class="alert <?=$flashType==='error'?'error':'success'?>"><?=e($_SESSION['admin_flash']);unset($_SESSION['admin_flash'],$_SESSION['admin_flash_type'])?></div><?php endif;?>
+<?php if(!empty($_SESSION['salesperson_convert_candidate'])):$candidate=rows("SELECT id,name,email,status FROM users WHERE id=? AND role='customer' LIMIT 1",[(int)$_SESSION['salesperson_convert_candidate']])[0]??null;if($candidate):?>
+<section class="card convert-customer-card">
+ <span class="eyebrow">EXISTING CUSTOMER FOUND</span>
+ <h2>Convert <?=e($candidate['name'])?> to salesperson?</h2>
+ <p><?=e($candidate['email'])?> · <?=e(ucfirst($candidate['status']))?> customer</p>
+ <p class="muted">Their existing password, customer history and linked orders stay on the same account. Their role changes to salesperson and access becomes approved.</p>
+ <form method="post" data-confirm="Convert this customer account to a salesperson account?">
+  <input type="hidden" name="_token" value="<?=e(csrf())?>">
+  <input type="hidden" name="action" value="customer_promote_salesperson">
+  <input type="hidden" name="id" value="<?=$candidate['id']?>">
+  <button>Convert existing customer</button>
+ </form>
+</section>
+<?php else:unset($_SESSION['salesperson_convert_candidate']);endif;endif;?>
 <section class="card"><h2>Create salesperson login</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="salesperson_create"><div class="formgrid"><label>Full name<input name="name" required></label><label>Email<input type="email" name="email" required></label><label>Phone<input name="phone"></label><label>Temporary password<input type="password" name="password" minlength="12" required><small>Minimum 12 characters. Share it securely.</small></label></div><button>Create salesperson</button></form></section>
 <div class="salesperson-admin-grid section">
 <?php foreach($staff as $s):$rates=salesperson_commission_rates((int)$s['id']);?>
@@ -275,7 +319,7 @@ elseif($view==='customers'){ $status=$_GET['status']??'all';$allowed=['all','pen
 <div class="hero adminhero"><span class="pill">ACCESS CONTROL</span><h1>Customers</h1><p class="muted">Review new registrations and control access to private offers.</p></div>
 <div class="stats"><div class="stat card hot"><span>Pending</span><strong><?=($counts['pending']??0)?></strong></div><div class="stat card"><span>Approved</span><strong><?=($counts['approved']??0)?></strong></div><div class="stat card"><span>Suspended</span><strong><?=($counts['suspended']??0)?></strong></div><div class="stat card"><span>Blocked</span><strong><?=($counts['blocked']??0)?></strong></div></div>
 <div class="row" style="margin:20px 0;flex-wrap:wrap"><?php foreach($allowed as $filter):?><a class="button secondary" href="<?=e(url('?page=admin&view=customers&status='.$filter))?>"><?=e(ucfirst($filter))?></a><?php endforeach;?></div>
-<section class="section"><div class="grid"><?php foreach($customers as $u):?><article class="card"><div class="row between"><span class="pill"><?=e(strtoupper($u['status']))?></span><small class="muted"><?=e($u['created_at'])?></small></div><h3><?=e($u['name'])?></h3><p><?=e($u['email'])?> <?php if(!empty($u['email_verified_at'])):?><span class="status-chip verified">VERIFIED</span><?php else:?><span class="status-chip unverified">UNVERIFIED</span><?php endif;?><br><?=e($u['phone']??'')?></p><p class="muted"><?=$u['order_count']?> order<?=((int)$u['order_count']===1?'':'s')?><?php if(!empty($u['email_verified_at'])):?> · verified <?=e(date('M j, Y',strtotime($u['email_verified_at'])))?><?php endif;?></p><?php if(empty($u['email_verified_at'])):?><form method="post" class="inline verification-form"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="customer_resend_verification"><input type="hidden" name="id" value="<?=$u['id']?>"><button class="secondary">Queue verification</button></form><?php endif;?><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="customer_status"><input type="hidden" name="id" value="<?=$u['id']?>"><label>Access status<select name="status"><?php foreach(['pending','approved','rejected','suspended','blocked'] as $s):?><option value="<?=$s?>" <?=$u['status']===$s?'selected':''?>><?=e(ucfirst($s))?></option><?php endforeach;?></select></label><button>Update customer</button></form><p><a class="button secondary" href="<?=e(url('?page=admin&view=customer360&id='.$u['id']))?>">View full customer →</a></p></article><?php endforeach;if(!$customers):?><article class="card"><h3>No customers found</h3><p class="muted">No registrations match this filter.</p></article><?php endif;?></div></section><?php }
+<section class="section"><div class="grid"><?php foreach($customers as $u):?><article class="card"><div class="row between"><span class="pill"><?=e(strtoupper($u['status']))?></span><small class="muted"><?=e($u['created_at'])?></small></div><h3><?=e($u['name'])?></h3><p><?=e($u['email'])?> <?php if(!empty($u['email_verified_at'])):?><span class="status-chip verified">VERIFIED</span><?php else:?><span class="status-chip unverified">UNVERIFIED</span><?php endif;?><br><?=e($u['phone']??'')?></p><p class="muted"><?=$u['order_count']?> order<?=((int)$u['order_count']===1?'':'s')?><?php if(!empty($u['email_verified_at'])):?> · verified <?=e(date('M j, Y',strtotime($u['email_verified_at'])))?><?php endif;?></p><?php if(empty($u['email_verified_at'])):?><form method="post" class="inline verification-form"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="customer_resend_verification"><input type="hidden" name="id" value="<?=$u['id']?>"><button class="secondary">Queue verification</button></form><?php endif;?><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="customer_status"><input type="hidden" name="id" value="<?=$u['id']?>"><label>Access status<select name="status"><?php foreach(['pending','approved','rejected','suspended','blocked'] as $s):?><option value="<?=$s?>" <?=$u['status']===$s?'selected':''?>><?=e(ucfirst($s))?></option><?php endforeach;?></select></label><button>Update customer</button></form><div class="row customer-role-actions"><a class="button secondary" href="<?=e(url('?page=admin&view=customer360&id='.$u['id']))?>">View full customer →</a><form method="post" data-confirm="Convert <?=e($u['name'])?> from customer to salesperson? Their existing password and account history will be preserved."><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="customer_promote_salesperson"><input type="hidden" name="id" value="<?=$u['id']?>"><button type="submit" class="secondary">Convert to salesperson</button></form></div></article><?php endforeach;if(!$customers):?><article class="card"><h3>No customers found</h3><p class="muted">No registrations match this filter.</p></article><?php endif;?></div></section><?php }
 
 if($view==='command'){
  $m=dashboard_metrics();$n=notification_stats();$series=command_centre_series(7);$providerPerf=provider_conversion_rows();
