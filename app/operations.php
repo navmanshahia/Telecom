@@ -204,8 +204,8 @@ function queue_order_status_notification(int $orderId,int $actor,string $customM
       (!empty($o['appointment_at'])?"\nAppointment: ".$o['appointment_at'].".":"").
       (!empty($o['provider_reference'])?"\nProvider reference: ".$o['provider_reference'].".":"").
       "\n\nYou can sign in to SecureLink to view the latest status.";
-    queue_notification((int)$o['user_id'],$orderId,null,'Order update · '.$status,$message,$actor,'email',(string)$o['email']);
     if(db_table_exists('communications')) queue_email((int)$o['user_id'],null,$orderId,'Order update · '.$status,$message,$actor);
+    queue_notification((int)$o['user_id'],$orderId,null,'Order update · '.$status,$message,$actor,'email',(string)$o['email']);
 }
 function notification_stats(): array {
     if(db_table_exists('users')){
