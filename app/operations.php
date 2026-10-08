@@ -283,7 +283,7 @@ function process_notification_queue(int $limit=25): array {
             sync_notification_communication($n,'failed');$failed++;continue;
         }
         $headers="MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
-        $from=trim((string)envv('MAIL_FROM',''));
+        $from=trim((string)envv('MAIL_FROM','reply@elite-noir.com'));
         if($from!=='')$headers.="From: ".$from."\r\n";
         $ok=@mail($recipient,(string)$n['subject'],(string)$n['message'],$headers);
         if($ok){
