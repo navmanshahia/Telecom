@@ -450,6 +450,23 @@ function ensure_platform_schema(): void {
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_profiles(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,display_name TEXT,active INTEGER NOT NULL DEFAULT 1,commission_percent REAL NOT NULL DEFAULT 0,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     db()->exec("CREATE TABLE IF NOT EXISTS salesperson_commission_rates(user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,product_key TEXT NOT NULL,amount REAL NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,product_key))");
     db()->exec("CREATE INDEX IF NOT EXISTS idx_salesperson_commission_rates_user ON salesperson_commission_rates(user_id,active)");
+    db()->exec("CREATE TABLE IF NOT EXISTS sales_customer_owners(user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,salesperson_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_sales_customer_owners_salesperson ON sales_customer_owners(salesperson_user_id,user_id)");
+    db()->exec("CREATE TABLE IF NOT EXISTS customer_identity_records(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,id_type TEXT NOT NULL,id_number_encrypted TEXT,id_last4 TEXT,document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,status TEXT NOT NULL DEFAULT 'received',created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE INDEX IF NOT EXISTS idx_customer_identity_user ON customer_identity_records(user_id,status)");
+    db()->exec("CREATE TABLE IF NOT EXISTS quote_templates(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,description TEXT,deal_ids_json TEXT NOT NULL DEFAULT '[]',notes TEXT,active INTEGER NOT NULL DEFAULT 1,created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS application_checklists(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,check_key TEXT NOT NULL,label TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',notes TEXT,completed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,completed_at TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(user_id,order_id,check_key))");
+    db()->exec("CREATE TABLE IF NOT EXISTS sales_scripts(id INTEGER PRIMARY KEY AUTOINCREMENT,script_key TEXT NOT NULL UNIQUE,title TEXT NOT NULL,category TEXT NOT NULL DEFAULT 'general',script TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,display_order INTEGER NOT NULL DEFAULT 100,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    db()->exec("CREATE TABLE IF NOT EXISTS sales_bonus_rules(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,metric TEXT NOT NULL DEFAULT 'activations',threshold_value REAL NOT NULL DEFAULT 0,bonus_amount REAL NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+    $salesScripts=[
+      ['internet_open','Internet opener','Internet',"Hi {{first_name}}, I’m with SecureLink. I can compare the current Internet options and show you the monthly price, credits and term side by side so you can decide without guessing.",10],
+      ['mobility_open','Mobility opener','Mobility',"Hi {{first_name}}, I can check current TELUS and Koodo mobility options based on how much data you use and whether you need Canada-US coverage. I’ll show you the total monthly cost before anything is submitted.",20],
+      ['bundle_close','Bundle close','Bundle',"If you’re already considering more than one service, I can price the bundle together and show you both the customer savings and the exact services included before you decide.",30],
+      ['price_objection','Price objection','Objection',"That makes sense. Instead of only looking at the advertised monthly price, I can compare the regular price, promotional period, credits and any one-time fees so you can see the real value over the term.",40],
+      ['think_about_it','Need to think','Objection',"Absolutely. I can send you a written quote so you have the price, services and credits in one place. You can review it without committing, and I’ll follow up when it works for you.",50],
+      ['follow_up','Follow-up','Follow-up',"Hi {{first_name}}, just checking in on the SecureLink options we discussed. If your needs or budget changed, I can update the comparison before you make a decision.",60]
+    ];
+    foreach($salesScripts as $ss) db()->prepare("INSERT OR IGNORE INTO sales_scripts(script_key,title,category,script,active,display_order) VALUES(?,?,?,? ,1,?)")->execute($ss);
     db()->exec("CREATE TABLE IF NOT EXISTS communication_templates(id INTEGER PRIMARY KEY AUTOINCREMENT,template_key TEXT NOT NULL UNIQUE,name TEXT NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,channel TEXT NOT NULL DEFAULT 'email',active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
     $addColumn('communication_templates','updated_at','TEXT');
     $addColumn('communication_templates','display_order','INTEGER NOT NULL DEFAULT 100');
@@ -976,6 +993,94 @@ function send_customer_email_v5(int $userId,string $subject,string $message,int 
     audit($actor,'customer_email_send','user',$userId,['template'=>$templateKey,'notification_id'=>$nid]);
     return $nid;
 }
+function sales_code_for_user(array $u): string {
+    return 'SP'.str_pad((string)(int)$u['id'],4,'0',STR_PAD_LEFT).'-'.strtoupper(substr(hash('sha256',(int)$u['id'].'|'.strtolower((string)$u['email']).'|sales'),0,6));
+}
+function salesperson_from_code(string $code): ?array {
+    $code=strtoupper(trim($code));
+    foreach(rows("SELECT id,name,email,role,status FROM users WHERE role='salesperson' AND status='approved'") as $sp){
+        if(hash_equals(sales_code_for_user($sp),$code)) return $sp;
+    }
+    return null;
+}
+function sales_personal_link(array $u): string { return app_absolute_url('?page=register&sales='.rawurlencode(sales_code_for_user($u))); }
+function salesperson_can_access_customer(array $actor,int $userId): bool {
+    if(in_array((string)($actor['role']??''),['owner','admin'],true)) return true;
+    if(($actor['role']??'')!=='salesperson') return false;
+    $sid=(int)$actor['id'];$name=(string)$actor['name'];
+    if((int)scalar("SELECT COUNT(*) FROM sales_customer_owners WHERE user_id=? AND salesperson_user_id=?",[$userId,$sid])>0) return true;
+    if((int)scalar("SELECT COUNT(*) FROM orders WHERE user_id=? AND lower(COALESCE(sales_agent,''))=lower(?)",[$userId,$name])>0) return true;
+    return false;
+}
+function salesperson_customers(array $u,string $q=''): array {
+    $sid=(int)$u['id'];$name=(string)$u['name'];$params=[$sid,$name];$filter='';
+    if(trim($q)!==''){$like='%'.trim($q).'%';$filter=" AND (u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)";array_push($params,$like,$like,$like);}
+    return rows("SELECT DISTINCT u.id,u.name,u.email,u.phone,u.status,u.created_at,
+      (SELECT COUNT(*) FROM orders x WHERE x.user_id=u.id) orders,
+      (SELECT COUNT(*) FROM documents d WHERE d.user_id=u.id) documents,
+      (SELECT MAX(created_at) FROM orders x WHERE x.user_id=u.id) last_order
+      FROM users u
+      LEFT JOIN sales_customer_owners sco ON sco.user_id=u.id
+      LEFT JOIN orders o ON o.user_id=u.id
+      WHERE u.role='customer' AND (sco.salesperson_user_id=? OR lower(COALESCE(o.sales_agent,''))=lower(?))".$filter."
+      ORDER BY COALESCE(last_order,u.created_at) DESC,u.name LIMIT 200",$params);
+}
+function salesperson_customer_360(array $actor,int $userId): array {
+    if(!salesperson_can_access_customer($actor,$userId)) return [];
+    $x=customer_360_v3($userId);if(!$x)return [];
+    $x['identity']=rows("SELECT id,id_type,id_last4,document_id,status,created_at FROM customer_identity_records WHERE user_id=? ORDER BY id DESC",[$userId]);
+    $x['checklists']=rows("SELECT ac.*,o.public_id FROM application_checklists ac LEFT JOIN orders o ON o.id=ac.order_id WHERE ac.user_id=? ORDER BY ac.id",[$userId]);
+    return $x;
+}
+function sales_assign_customer(int $userId,int $salespersonId): void {
+    db()->prepare("INSERT INTO sales_customer_owners(user_id,salesperson_user_id) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET salesperson_user_id=excluded.salesperson_user_id")->execute([$userId,$salespersonId]);
+}
+function sales_application_checklist_seed(int $userId,?int $orderId=null): void {
+    $items=[
+      'contact'=>'Customer email & phone confirmed',
+      'address'=>'Service address confirmed',
+      'identity'=>'Identity document received',
+      'offer'=>'Offer / quote confirmed',
+      'consent'=>'Customer consent to submit confirmed',
+      'provider'=>'Ready for provider processing'
+    ];
+    foreach($items as $key=>$label) db()->prepare("INSERT OR IGNORE INTO application_checklists(user_id,order_id,check_key,label) VALUES(?,?,?,?)")->execute([$userId,$orderId,$key,$label]);
+}
+function sales_quote_templates(int $userId): array {
+    return rows("SELECT * FROM quote_templates WHERE active=1 AND (created_by=? OR created_by IS NULL) ORDER BY id DESC",[$userId]);
+}
+function sales_commission_forecast(array $u): array {
+    $name=(string)$u['name'];$uid=(int)$u['id'];$rates=salesperson_commission_rates($uid);
+    $openOrders=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE lower(sales_agent)=lower(?) AND status IN ('pending','hold','approved')",[$name]);
+    $approved=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE lower(sales_agent)=lower(?) AND status='approved'",[$name]);
+    $quotePotential=0.0;
+    foreach(rows("SELECT q.* FROM quotes q LEFT JOIN leads l ON l.id=q.lead_id WHERE (q.created_by=? OR lower(COALESCE(l.sales_agent,''))=lower(?)) AND q.status IN ('sent','viewed','accepted')",[$uid,$name]) as $q){
+        foreach(quote_calculate(json_decode((string)$q['deal_ids_json'],true)?:[])['items'] as $d){
+            $key=strtolower((string)$d['category']);
+            if($key==='home phone')$key='homephone';
+            if($key==='mobility')$key=str_contains(strtolower((string)$d['provider'].' '.(string)$d['name']),'koodo')?'koodo_mobility':'telus_mobility';
+            if(isset($rates[$key])&&$rates[$key]['configured'])$quotePotential+=(float)$rates[$key]['amount'];
+        }
+    }
+    return ['approved'=>$approved,'open_orders'=>$openOrders,'quote_potential'=>$quotePotential,'total_expected'=>$openOrders+$quotePotential];
+}
+function sales_bonus_progress(array $u): array {
+    $name=(string)$u['name'];$monthOrders=(int)scalar("SELECT COUNT(*) FROM orders WHERE lower(sales_agent)=lower(?) AND created_at>=datetime('now','start of month')",[$name]);$activations=(int)scalar("SELECT COUNT(*) FROM orders WHERE lower(sales_agent)=lower(?) AND status IN ('activated','completed') AND created_at>=datetime('now','start of month')",[$name]);$commission=(float)scalar("SELECT COALESCE(SUM(salesperson_amount),0) FROM commission_ledger WHERE lower(sales_agent)=lower(?) AND earned_at>=datetime('now','start of month')",[$name]);
+    $rules=rows("SELECT * FROM sales_bonus_rules WHERE active=1 ORDER BY threshold_value");
+    foreach($rules as &$r){$current=match($r['metric']){'orders'=>$monthOrders,'commission'=>$commission,default=>$activations};$r['current']=$current;$r['progress']=$r['threshold_value']>0?min(100,round($current*100/$r['threshold_value'])):0;$r['unlocked']=$current>=(float)$r['threshold_value'];}unset($r);
+    return ['orders'=>$monthOrders,'activations'=>$activations,'commission'=>$commission,'rules'=>$rules];
+}
+function sales_search(array $u,string $q): array {
+    $q=trim($q);if(strlen($q)<2)return [];$like='%'.$q.'%';$name=(string)$u['name'];$sid=(int)$u['id'];$out=[];
+    foreach(salesperson_customers($u,$q) as $x)$out[]=['type'=>'Customer','title'=>$x['name'],'meta'=>$x['email'].' · '.$x['phone'],'url'=>'?page=sales-customer&id='.$x['id']];
+    foreach(rows("SELECT id,name,email,phone,stage FROM leads WHERE sales_agent=? AND (name LIKE ? OR email LIKE ? OR phone LIKE ?) LIMIT 10",[$name,$like,$like,$like]) as $x)$out[]=['type'=>'Lead','title'=>$x['name'],'meta'=>$x['stage'].' · '.($x['phone']?:$x['email']),'url'=>'?page=sales'];
+    foreach(rows("SELECT id,public_id,status,contact_email FROM orders WHERE sales_agent=? AND (public_id LIKE ? OR contact_email LIKE ? OR contact_phone LIKE ?) LIMIT 10",[$name,$like,$like,$like]) as $x)$out[]=['type'=>'Order','title'=>$x['public_id'],'meta'=>$x['status'].' · '.$x['contact_email'],'url'=>'?page=sales-customer&id='.(int)(scalar("SELECT user_id FROM orders WHERE id=?",[$x['id']])?:0)];
+    foreach(rows("SELECT public_id,customer_name,status,user_id FROM quotes WHERE created_by=? AND (public_id LIKE ? OR customer_name LIKE ? OR customer_email LIKE ?) LIMIT 10",[$sid,$like,$like,$like]) as $x)$out[]=['type'=>'Quote','title'=>$x['public_id'],'meta'=>$x['customer_name'].' · '.$x['status'],'url'=>$x['user_id']?'?page=sales-customer&id='.$x['user_id']:'?page=sales-quotes'];
+    return array_slice($out,0,35);
+}
+function sales_scripts(): array { return rows("SELECT * FROM sales_scripts WHERE active=1 ORDER BY display_order,title"); }
+function sales_masked_identity(int $userId): array { return rows("SELECT id,id_type,id_last4,document_id,status,created_at FROM customer_identity_records WHERE user_id=? ORDER BY id DESC",[$userId]); }
+
 function customer_upgrade_recommendations(int $userId,int $limit=12): array {
     $services=customer_savings($userId)['services'];
     $current=[];
