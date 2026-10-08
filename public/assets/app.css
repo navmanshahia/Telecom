@@ -1624,3 +1624,39 @@ body{overflow-x:hidden}
  .sales-history-columns{grid-template-columns:1fr}
  .sales-searchbar,.sales-global-search{grid-template-columns:1fr}
 }
+
+
+/* Automatic salesperson commission tiers */
+.tier-pay-rates{overflow:hidden}
+.tier-standard{background:#eef2ff!important;color:#3538cd!important}
+.tier-premier{background:#ecfdf3!important;color:#067647!important}
+.tier-progress{display:grid;grid-template-columns:1fr;gap:10px;padding:16px;margin:16px 0;border:1px solid #e4e7ec;border-radius:16px;background:#f8fafc}
+.tier-progress div{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.tier-progress div span{font-size:11px;color:#667085}
+.tier-progress>i{display:block;height:9px;border-radius:999px;background:#e4e7ec;overflow:hidden}
+.tier-progress>i span{display:block;height:100%;background:#4b286d;border-radius:inherit}
+.tier-progress.premier{background:#f0fdf4;border-color:#abefc6}
+.tier-progress.premier>i span{background:#067647}
+.tier-rate-compare,.tier-rate-table{display:grid;gap:0;border:1px solid #e4e7ec;border-radius:16px;overflow:hidden;margin:14px 0}
+.tier-rate-head,.tier-rate-row{display:grid;grid-template-columns:minmax(150px,1.2fr) repeat(2,minmax(120px,1fr));gap:0;align-items:center}
+.tier-rate-head{background:#101828;color:#fff}
+.tier-rate-head>*{padding:12px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+.tier-rate-row{border-top:1px solid #eaecf0;background:#fff}
+.tier-rate-row>*{padding:13px 14px}
+.tier-rate-row>b{text-align:center;font-size:18px}
+.tier-rate-row>label{display:flex;align-items:center;justify-content:center;gap:5px;font-weight:800}
+.tier-rate-row>label input{max-width:110px;margin:0}
+.tier-rate-row span small{display:block;margin-top:3px;color:#b54708;font-size:8px;text-transform:uppercase;font-weight:900}
+.tier-rate-row.has-override{background:#fffaeb}
+.commission-tier-admin{border-color:#d6bbfb}
+.commission-tier-admin .tier-rate-row input{text-align:right}
+.earning-product-grid label span small{display:block;font-size:8px;color:#667085;margin-top:2px}
+
+@media(max-width:600px){
+ .tier-progress div{align-items:flex-start;flex-direction:column}
+ .tier-rate-head,.tier-rate-row{grid-template-columns:1.2fr .8fr .8fr}
+ .tier-rate-head>*{padding:10px 8px;font-size:8px}
+ .tier-rate-row>*{padding:11px 8px}
+ .tier-rate-row>b{font-size:15px}
+ .tier-rate-row>label input{max-width:76px;padding-left:6px;padding-right:6px}
+}
