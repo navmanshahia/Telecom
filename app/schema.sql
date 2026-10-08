@@ -88,6 +88,73 @@ CREATE TABLE IF NOT EXISTS salesperson_commission_rates(
 );
 CREATE INDEX IF NOT EXISTS idx_salesperson_commission_rates_user ON salesperson_commission_rates(user_id,active);
 
+CREATE TABLE IF NOT EXISTS sales_customer_owners(
+ user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ salesperson_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sales_customer_owners_salesperson ON sales_customer_owners(salesperson_user_id,user_id);
+
+CREATE TABLE IF NOT EXISTS customer_identity_records(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ id_type TEXT NOT NULL,
+ id_number_encrypted TEXT,
+ id_last4 TEXT,
+ document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+ status TEXT NOT NULL DEFAULT 'received',
+ created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_customer_identity_user ON customer_identity_records(user_id,status);
+
+CREATE TABLE IF NOT EXISTS quote_templates(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL,
+ description TEXT,
+ deal_ids_json TEXT NOT NULL DEFAULT '[]',
+ notes TEXT,
+ active INTEGER NOT NULL DEFAULT 1,
+ created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS application_checklists(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+ check_key TEXT NOT NULL,
+ label TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending',
+ notes TEXT,
+ completed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+ completed_at TEXT,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE(user_id,order_id,check_key)
+);
+
+CREATE TABLE IF NOT EXISTS sales_scripts(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ script_key TEXT NOT NULL UNIQUE,
+ title TEXT NOT NULL,
+ category TEXT NOT NULL DEFAULT 'general',
+ script TEXT NOT NULL,
+ active INTEGER NOT NULL DEFAULT 1,
+ display_order INTEGER NOT NULL DEFAULT 100,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sales_bonus_rules(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL,
+ metric TEXT NOT NULL DEFAULT 'activations',
+ threshold_value REAL NOT NULL DEFAULT 0,
+ bonus_amount REAL NOT NULL DEFAULT 0,
+ active INTEGER NOT NULL DEFAULT 1,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 
 CREATE TABLE IF NOT EXISTS commission_ledger(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,sales_agent TEXT,provider_id INTEGER REFERENCES providers(id),category TEXT,gross_amount REAL NOT NULL DEFAULT 0,salesperson_amount REAL NOT NULL DEFAULT 0,company_amount REAL NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',earned_at TEXT,paid_at TEXT,payment_reference TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(order_id));
 CREATE INDEX IF NOT EXISTS idx_commission_ledger_status ON commission_ledger(status,sales_agent);
