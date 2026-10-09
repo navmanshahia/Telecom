@@ -165,3 +165,288 @@ body[data-page^="sales"] .sales-v6-head p,
 body[data-page^="sales"] .empty-state.compact span {
   color:#b6c2d4;
 }
+
+
+/* Sales Portal VNext — mobile usability and polished sales-only surfaces.
+   This stylesheet is loaded on sales* pages, never on customer/admin pages. */
+body[data-page^="sales"]{
+  --sales-type:#f6f8fd;
+  --sales-sub:#b9c4d7;
+}
+body[data-page^="sales"] :is(.card,.sales-deal-card,.sales-glass-panel){
+  transition:box-shadow .25s ease,border-color .25s ease,background-color .25s ease;
+}
+body[data-page^="sales"] :is(.card,.sales-deal-card,.sales-glass-panel):hover{
+  border-color:rgba(165,143,255,.25);
+}
+body[data-page^="sales"] :is(a,button,input,select,textarea,summary):focus-visible{
+  outline:3px solid #a78bfa;
+  outline-offset:3px;
+}
+body[data-page^="sales"] :is(h1,h2,h3){
+  overflow-wrap:break-word;
+  text-wrap:balance;
+}
+body[data-page^="sales"] .sales-v6-head p{
+  color:var(--sales-sub);
+  line-height:1.6;
+}
+body[data-page^="sales"] .reveal{
+  opacity:1;
+  transform:none;
+}
+body[data-page^="sales"] :is(.sales-quick-offer,.sales-earnings-ledger,.sales-pay-rates){
+  scroll-margin-top:100px;
+}
+body[data-page^="sales"] :is(.sales-more-grid,.sales-earnings-summary,.sales-earnings-detail){
+  display:grid;
+  gap:14px;
+  margin:18px 0 22px;
+}
+body[data-page^="sales"] .sales-more-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+body[data-page^="sales"] .sales-more-grid a.card{
+  display:flex;
+  flex-direction:column;
+  min-height:180px;
+  gap:11px;
+  text-decoration:none;
+  color:var(--sales-type);
+  border-radius:23px;
+  padding:23px;
+}
+body[data-page^="sales"] .sales-more-grid a.card > b{
+  display:grid;
+  place-items:center;
+  width:42px;height:42px;
+  color:#e0d4ff;
+  background:rgba(139,92,246,.14);
+  border:1px solid rgba(139,92,246,.25);
+  border-radius:14px;
+  font-size:23px;
+}
+body[data-page^="sales"] .sales-more-grid a.card > strong{
+  font-size:clamp(16px,1.6vw,20px);
+  line-height:1.2;
+}
+body[data-page^="sales"] .sales-more-grid a.card > span{
+  color:var(--sales-sub);
+  font-size:13px;
+  line-height:1.5;
+}
+body[data-page^="sales"] .sales-logout-link{
+  display:inline-flex;
+  margin:14px 0 42px;
+  padding:13px 18px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  color:#f3d4d4;
+  font-weight:750;
+  text-decoration:none;
+}
+body[data-page^="sales"] .sales-earnings-summary{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+body[data-page^="sales"] .sales-earnings-summary article{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+  padding:22px;
+}
+body[data-page^="sales"] .sales-earnings-summary article > strong{
+  font-size:clamp(25px,3vw,39px);
+  color:#fff;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.045em;
+  overflow-wrap:anywhere;
+}
+body[data-page^="sales"] .sales-earnings-summary article > small{
+  color:var(--sales-sub);
+  font-size:12px;
+  line-height:1.4;
+}
+body[data-page^="sales"] .sales-earnings-detail{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+}
+body[data-page^="sales"] .sales-earnings-detail .wallet-kpis{
+  grid-template-columns:repeat(auto-fit,minmax(115px,1fr));
+}
+body[data-page^="sales"] .sales-earnings-detail .wallet-kpis b{
+  color:#101828;
+  font-variant-numeric:tabular-nums;
+}
+body[data-page^="sales"] .sales-earnings-ledger .tablewrap{
+  max-width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+body[data-page^="sales"] .sales-earnings-ledger table{
+  min-width:580px;
+}
+body[data-page^="sales"] .sales-earnings-ledger td{
+  vertical-align:top;
+}
+body[data-page^="sales"] .sales-quick-offer{
+  margin:18px 0;
+  padding:clamp(19px,3vw,28px);
+  border-radius:25px;
+}
+body[data-page^="sales"] .sales-quick-offer-head{
+  display:flex;
+  align-items:start;
+  justify-content:space-between;
+  gap:18px;
+}
+body[data-page^="sales"] .sales-quick-offer-head h2{
+  margin:7px 0;
+  font-size:clamp(23px,3vw,32px);
+  line-height:1.18;
+}
+body[data-page^="sales"] .sales-quick-offer-head p{
+  max-width:690px;
+  line-height:1.55;
+}
+body[data-page^="sales"] .sales-quick-offer-form{
+  display:grid;
+  grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);
+  gap:13px;
+  margin-top:18px;
+}
+body[data-page^="sales"] .sales-quick-offer-form label{
+  color:#f3f5fa;
+  min-width:0;
+  gap:9px;
+}
+body[data-page^="sales"] .sales-quick-offer-form :is(select,input){
+  width:100%;
+  min-width:0;
+  min-height:48px;
+  font-size:14px;
+}
+body[data-page^="sales"] .sales-quick-offer-buttons{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:10px;
+  grid-column:1/-1;
+}
+body[data-page^="sales"] .sales-quick-offer-buttons button{
+  cursor:pointer;
+  min-height:46px;
+}
+body[data-page^="sales"] .sales-quick-offer-status{
+  grid-column:1/-1;
+  color:var(--sales-sub);
+  line-height:1.5;
+}
+body[data-page^="sales"] .sales-quick-offer-status[data-copy-state="error"]{color:#ffb5ac;}
+body[data-page^="sales"] .sales-quick-offer-status[data-copy-state="success"]{color:#a9ffdc;}
+body[data-page^="sales"] .sales-mobile-dock a.is-active:not(:nth-child(3)){
+  background:rgba(139,92,246,.20);
+  color:#fff;
+}
+body[data-page^="sales"] .sales-mobile-dock a.is-active span{
+  color:#fff;
+}
+@media(max-width:1000px){
+  body[data-page^="sales"] .sales-more-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+  body[data-page^="sales"] .sales-earnings-summary{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:760px){
+  body[data-page^="sales"]{
+    padding-bottom:0;
+  }
+  body[data-page^="sales"] .shell{
+    padding-bottom:calc(144px + env(safe-area-inset-bottom,0px));
+  }
+  /* Mobile relies on the five-tab dock; avoid a huge sticky wrapping header. */
+  body[data-page^="sales"] .nav{
+    position:relative;
+    top:auto;
+    z-index:20;
+    margin:7px 0 20px;
+    padding:12px 16px;
+    min-height:64px;
+    border-radius:20px;
+  }
+  body[data-page^="sales"] .nav .links{display:none;}
+  body[data-page^="sales"] .nav .brand{font-size:19px;}
+  body[data-page^="sales"] .sales-mobile-dock{
+    position:fixed;
+    display:grid;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    align-items:stretch;
+    left:max(10px,env(safe-area-inset-left,0px));
+    right:max(10px,env(safe-area-inset-right,0px));
+    bottom:calc(10px + env(safe-area-inset-bottom,0px));
+    z-index:250;
+    margin:0;
+    padding:7px;
+    min-height:72px;
+    border-radius:22px;
+    background:rgba(8,11,19,.95);
+    border:1px solid rgba(255,255,255,.13);
+    box-shadow:0 15px 48px rgba(0,0,0,.58);
+    backdrop-filter:blur(22px);
+    -webkit-backdrop-filter:blur(22px);
+  }
+  body[data-page^="sales"] .sales-mobile-dock a{
+    min-width:0;
+    min-height:54px;
+    padding:7px 2px;
+    border-radius:15px;
+    display:flex!important;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    color:#cbd5e1;
+    transition:background .18s ease,color .18s ease;
+  }
+  body[data-page^="sales"] .sales-mobile-dock a span{
+    font-size:10px;
+    font-weight:750;
+    white-space:nowrap;
+  }
+  body[data-page^="sales"] .sales-mobile-dock a b{
+    font-size:21px;
+    line-height:1;
+  }
+  body[data-page^="sales"] .sales-mobile-dock a:nth-child(3){
+    transform:none;
+    padding:6px 2px;
+    background:linear-gradient(135deg,#8b5cf6,#6334e7);
+    box-shadow:0 8px 24px rgba(105,65,226,.28);
+  }
+  body[data-page^="sales"] .sales-section-heading{
+    padding-top:8px;
+  }
+  body[data-page^="sales"] .sales-earnings-detail{grid-template-columns:1fr;}
+  body[data-page^="sales"] .sales-quick-offer-head{flex-direction:column;}
+  body[data-page^="sales"] .sales-quick-offer-form{grid-template-columns:1fr;}
+  body[data-page^="sales"] .sales-quick-offer-buttons{flex-direction:column;align-items:stretch;}
+  body[data-page^="sales"] .sales-quick-offer-buttons button{width:100%;}
+  body[data-page^="sales"] .quick-contact-bar{
+    position:relative;
+    top:auto;
+    z-index:5;
+    margin:0;
+    max-width:100%;
+    overflow-x:auto;
+    scrollbar-width:thin;
+    border-radius:16px;
+  }
+  body[data-page^="sales"] :is(.sales-quick-offer,.sales-pay-rates){scroll-margin-top:20px;}
+  body[data-page^="sales"] .sales-more-grid a.card{min-height:155px;padding:16px;}
+}
+@media(max-width:440px){
+  body[data-page^="sales"] .sales-more-grid{grid-template-columns:1fr;}
+  body[data-page^="sales"] .sales-earnings-summary article{padding:16px;}
+  body[data-page^="sales"] .sales-earnings-summary article > strong{font-size:26px;}
+  body[data-page^="sales"] .sales-quick-offer{padding:17px;}
+  body[data-page^="sales"] .sales-mobile-dock a span{font-size:9px;}
+}
+@media(prefers-reduced-motion:reduce){
+  body[data-page^="sales"] :is(.card,.sales-more-grid a,.sales-mobile-dock a,.sales-deal-card){animation:none!important;transition:none!important;transform:none!important;}
+}
