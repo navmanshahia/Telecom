@@ -106,3 +106,62 @@ body[data-page^="sales"] .sales-mobile-dock a:nth-child(3){background:linear-gra
 .sales-comm-timeline article>span{font-size:8px;letter-spacing:.1em;color:#a995ff;font-weight:900}.sales-comm-timeline article b{color:#fff}.sales-comm-timeline article p{margin:5px 0;white-space:pre-wrap;line-height:1.5}
 @media(max-width:900px){.sales-account-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.sales-account-grid{grid-template-columns:1fr}.sales-comm-timeline article{grid-template-columns:1fr}}
+
+
+/* Sales OS accessibility hotfix (2026-10-08).
+   app.css deliberately uses pale cards for calculators, tiers and activity;
+   the dark Sales OS theme must not leave inherited white text on these cards.
+   Scoped to sales-* pages: admin and customer portals remain untouched. */
+body[data-page^="sales"] :is(
+  .tier-progress,
+  .tier-rate-row,
+  .earning-product-grid label,
+  .sales-action-item,
+  .activity-event,
+  .wallet-kpis > div,
+  .customer-card-metrics > b,
+  .doc-status-list > div,
+  .sales-referral-strip code
+) {
+  color:#101828;
+}
+
+/* Commission tier progress + rates: dark text on the existing light panels. */
+body[data-page^="sales"] .tier-progress > div > b,
+body[data-page^="sales"] .tier-rate-row > span {color:#101828;}
+body[data-page^="sales"] .tier-progress > div > span {color:#475467;}
+body[data-page^="sales"] .tier-rate-row > b {color:#4338ca;}
+body[data-page^="sales"] .tier-rate-row > span > small {color:#9a6700;}
+body[data-page^="sales"] .tier-rate-head,
+body[data-page^="sales"] .tier-rate-head > * {color:#fff;}
+
+/* Earnings calculator: readable product names, values and override labels. */
+body[data-page^="sales"] .earning-product-grid label > span {color:#101828;}
+body[data-page^="sales"] .earning-product-grid label b {color:#4338ca;}
+body[data-page^="sales"] .earning-product-grid label small {color:#475467;}
+body[data-page^="sales"] .earning-product-grid label input[type="checkbox"] {
+  width:20px;height:20px;flex:0 0 20px;margin:0;
+  background:#fff;border:1px solid #667085;accent-color:#6d28d9;
+  color-scheme:light;
+}
+body[data-page^="sales"] .earning-product-grid label:has(input:focus-visible) {
+  outline:3px solid #8b5cf6;outline-offset:3px;
+}
+
+/* Other pale nested sales components must also remain legible. */
+body[data-page^="sales"] .sales-action-item small,
+body[data-page^="sales"] .activity-event small,
+body[data-page^="sales"] .activity-event > time,
+body[data-page^="sales"] .wallet-kpis span,
+body[data-page^="sales"] .customer-card-metrics small,
+body[data-page^="sales"] .doc-status-list span {
+  color:#475467;
+}
+
+/* Muted labels sitting directly on dark Sales OS surfaces. */
+body[data-page^="sales"] .target-row span,
+body[data-page^="sales"] .bonus-row small,
+body[data-page^="sales"] .sales-v6-head p,
+body[data-page^="sales"] .empty-state.compact span {
+  color:#b6c2d4;
+}
