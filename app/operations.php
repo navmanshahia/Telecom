@@ -1086,18 +1086,29 @@ function salesperson_customers(array $u,string $q=''): array {
     return rows("SELECT DISTINCT u.id,u.name,u.email,u.phone,u.status,u.created_at,
       (SELECT COUNT(*) FROM orders x WHERE x.user_id=u.id) orders,
       (SELECT COUNT(*) FROM documents d WHERE d.user_id=u.id) documents,
-      (SELECT MAX(created_at) FROM orders x WHERE x.user_id=u.id) last_order
+      (SELECT MAX(created_at) FROM orders x WHERE x.user_id=u.id) last_order,
+      CASE WHEN sco.salesperson_user_id=? THEN 'Assigned / referral' ELSE 'Order attribution' END ownership_source
       FROM users u
       LEFT JOIN sales_customer_owners sco ON sco.user_id=u.id
       LEFT JOIN orders o ON o.user_id=u.id
       WHERE u.role='customer' AND (sco.salesperson_user_id=? OR lower(COALESCE(o.sales_agent,''))=lower(?))".$filter."
-      ORDER BY COALESCE(last_order,u.created_at) DESC,u.name LIMIT 200",$params);
+      ORDER BY COALESCE(last_order,u.created_at) DESC,u.name LIMIT 200",array_merge([$sid],$params));
+}
+function salesperson_source_for_customer(int $userId): ?array {
+    $x=rows("SELECT u.id,u.name,u.email,sco.created_at assigned_at FROM sales_customer_owners sco JOIN users u ON u.id=sco.salesperson_user_id WHERE sco.user_id=? AND u.role='salesperson' LIMIT 1",[$userId])[0]??null;
+    if($x)return $x;
+    $agent=(string)(scalar("SELECT sales_agent FROM orders WHERE user_id=? AND COALESCE(trim(sales_agent),'')<>'' ORDER BY id ASC LIMIT 1",[$userId])?:'');
+    if($agent==='')return null;
+    return rows("SELECT id,name,email,NULL assigned_at FROM users WHERE role='salesperson' AND lower(name)=lower(?) ORDER BY id LIMIT 1",[$agent])[0]??['id'=>0,'name'=>$agent,'email'=>'','assigned_at'=>null];
 }
 function salesperson_customer_360(array $actor,int $userId): array {
     if(!salesperson_can_access_customer($actor,$userId)) return [];
     $x=customer_360_v3($userId);if(!$x)return [];
-    $x['identity']=rows("SELECT id,id_type,id_last4,document_id,status,created_at FROM customer_identity_records WHERE user_id=? ORDER BY id DESC",[$userId]);
+    $x['profile']=rows("SELECT * FROM customer_profiles WHERE user_id=? LIMIT 1",[$userId])[0]??[];
+    $x['identity']=rows("SELECT id,id_type,id_last4,document_id,status,created_at,updated_at FROM customer_identity_records WHERE user_id=? ORDER BY id DESC",[$userId]);
     $x['checklists']=rows("SELECT ac.*,o.public_id FROM application_checklists ac LEFT JOIN orders o ON o.id=ac.order_id WHERE ac.user_id=? ORDER BY ac.id",[$userId]);
+    $x['notifications']=rows("SELECT * FROM customer_notifications WHERE user_id=? ORDER BY id DESC LIMIT 30",[$userId]);
+    $x['source_salesperson']=salesperson_source_for_customer($userId);
     return $x;
 }
 function sales_assign_customer(int $userId,int $salespersonId): void {
