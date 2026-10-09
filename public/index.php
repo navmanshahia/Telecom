@@ -304,6 +304,44 @@ if($page==='sales-search'){
 }
 
 
+
+if($page==='sales-earnings'){
+ $u=require_login();if($u['role']!=='salesperson'){http_response_code(403);exit('Salesperson access required.');}
+ $d=salesperson_dashboard($u);$cv3=salesperson_commission_v3((string)$u['name']);
+ $tierStatus=salesperson_current_tier($u);$commissionTiers=sales_commission_tiers();
+ $target=rows("SELECT * FROM sales_targets WHERE lower(sales_agent)=lower(?) AND period=? LIMIT 1",[(string)$u['name'],date('Y-m')])[0]??[];
+ $salesLedger=rows("SELECT cl.*,o.public_id,p.name provider,d.name deal FROM commission_ledger cl JOIN orders o ON o.id=cl.order_id LEFT JOIN providers p ON p.id=cl.provider_id LEFT JOIN deals d ON d.id=o.deal_id WHERE lower(cl.sales_agent)=lower(?) ORDER BY cl.id DESC LIMIT 40",[(string)$u['name']]);
+ layout_start('My Earnings');?>
+ <section class="sales-v6-head sales-section-heading"><div><span class="eyebrow">EARNINGS · YOUR PERFORMANCE</span><h1>Every sale counts.</h1><p>Your live commission rates, tracked payouts and monthly progress. No calculator—only recorded earnings.</p></div><a class="sales-ghost" href="<?=e(url('?page=sales'))?>">Back to Home</a></section>
+ <div class="sales-earnings-summary">
+  <article class="card"><span class="eyebrow">PENDING / ON HOLD</span><strong>$<?=number_format($d['pending'],2)?></strong><small>Awaiting approval or release</small></article>
+  <article class="card"><span class="eyebrow">APPROVED</span><strong>$<?=number_format($d['approved'],2)?></strong><small>Approved for payout</small></article>
+  <article class="card"><span class="eyebrow">PAID</span><strong>$<?=number_format($d['paid'],2)?></strong><small>Previously paid commissions</small></article>
+  <article class="card"><span class="eyebrow">NET PAYABLE</span><strong>$<?=number_format($cv3['payable'],2)?></strong><small>After recorded adjustments</small></article>
+ </div>
+ <section class="card tier-pay-rates sales-pay-rates" id="sales-earnings">
+  <span class="eyebrow">MY COMMISSION TIER</span><h2><?=e($tierStatus['tier_name'])?> · <?=$tierStatus['activations']?> activation<?=$tierStatus['activations']===1?'':'s'?> this month</h2>
+  <div class="tier-progress"><div><b><?=$tierStatus['next']?$tierStatus['remaining'].' more to '.e($tierStatus['next']['name']):'Premier unlocked'?></b><span>Tier rates are based on qualifying activated sales this month.</span></div><i><span style="width:<?=min(100,(int)$tierStatus['activations']*10)?>%"></span></i></div>
+  <div class="tier-rate-compare"><div class="tier-rate-head"><b>Product</b><?php foreach($commissionTiers as $ct):?><b><?=e($ct['name'])?></b><?php endforeach;?></div>
+   <?php foreach(salesperson_commission_products() as $key=>$label):?><div class="tier-rate-row"><span><?=e($label)?></span><?php foreach($commissionTiers as $ct):?><b>$<?=number_format((float)($ct['rates'][$key]??0),2)?></b><?php endforeach;?></div><?php endforeach;?>
+  </div><p class="muted">An owner-assigned personal override, if active, replaces both tier rates for that product.</p>
+ </section>
+ <div class="sales-earnings-detail">
+  <section class="card target-card"><span class="eyebrow">THIS MONTH</span><h2>My targets</h2>
+   <?php $to=(int)($target['target_orders']??0);$ta=(int)($target['target_activations']??0);$tc=(float)($target['target_commission']??0);?>
+   <div class="target-row"><span>Orders</span><b><?=$d['monthOrders']?><?=$to?' / '.$to:''?></b></div>
+   <div class="target-row"><span>Activations</span><b><?=$d['activated']?><?=$ta?' / '.$ta:''?></b></div>
+   <div class="target-row"><span>Commission</span><b>$<?=number_format($d['commission'],0)?><?=$tc?' / $'.number_format($tc,0):''?></b></div>
+   <?php if(!$to&&!$ta&&!$tc):?><p class="muted">No monthly target has been assigned yet.</p><?php endif;?>
+  </section>
+  <section class="card"><span class="eyebrow">PAYOUT PROTECTION</span><h2>Tracked adjustments</h2><div class="wallet-kpis"><div><span>Hold</span><b>$<?=number_format($cv3['risk'],2)?></b></div><div><span>Protected</span><b>$<?=number_format($cv3['protected'],2)?></b></div><div><span>Clawbacks</span><b>$<?=number_format($cv3['clawbacks'],2)?></b></div></div><p class="muted">These figures reflect recorded ledger statuses, not a guaranteed payout date.</p></section>
+ </div>
+ <section class="card sales-earnings-ledger"><div class="row between"><div><span class="eyebrow">PAYMENT LEDGER</span><h2>Commission history</h2></div><span class="pill"><?=count($salesLedger)?> ENTRIES</span></div>
+  <div class="tablewrap"><table class="table"><thead><tr><th>Order</th><th>Product</th><th>Tier</th><th>Pay</th><th>Status</th><th>Paid</th></tr></thead><tbody><?php foreach($salesLedger as $x):?><tr><td><?=e($x['public_id'])?></td><td><?=e(($x['provider']?:'').' · '.($x['deal']?:''))?></td><td><?=e(strtoupper((string)($x['commission_tier']?:'pending')))?></td><td><strong>$<?=number_format((float)$x['salesperson_amount'],2)?></strong></td><td><?=e(strtoupper((string)$x['status']))?></td><td><?=e($x['paid_at']?:'—')?></td></tr><?php endforeach;if(!$salesLedger):?><tr><td colspan="6">No commission entries yet.</td></tr><?php endif;?></tbody></table></div>
+ </section>
+ <?php layout_end();exit;
+}
+
 if($page==='sales-more'){
  $u=require_login();if($u['role']!=='salesperson'){http_response_code(403);exit('Salesperson access required.');}
  layout_start('Sales Tools');?>
