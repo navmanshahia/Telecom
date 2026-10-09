@@ -228,17 +228,41 @@ if($page==='sales-customer'){
     }elseif($act==='checklist_update'){
       $checkId=(int)($_POST['check_id']??0);$status=in_array($_POST['status']??'', ['pending','complete','needs_info'],true)?$_POST['status']:'pending';
       db()->prepare("UPDATE application_checklists SET status=?,completed_by=CASE WHEN ?='complete' THEN ? ELSE NULL END,completed_at=CASE WHEN ?='complete' THEN datetime('now') ELSE NULL END WHERE id=? AND user_id=?")->execute([$status,$status,(int)$u['id'],$status,$checkId,$cid]);
+    }elseif($act==='quick_offer_send'){
+      $did=(int)($_POST['deal_id']??0);$note=trim((string)($_POST['message']??''));
+      if($did<1)throw new RuntimeException('Choose a live offer before sending.');
+      if(strlen($note)>1000)throw new RuntimeException('Personal note must be 1000 characters or fewer.');
+      $nid=sales_offer_send($u,$cid,$did,$note);
+      $status=(string)(scalar("SELECT status FROM notification_queue WHERE id=?",[$nid])?:'queued');
+      if($status==='failed')throw new RuntimeException('Offer email could not be delivered. Please retry or use Copy message.');
+      $_SESSION['sales_flash']=$status==='sent'?'Offer email sent to your customer.':'Offer queued for email delivery. Check your email worker for delivery.';
     }elseif($act==='submit_order'){
       $oid=sales_customer_order_submit($u,$cid,(int)($_POST['deal_id']??0),(string)($_POST['service_address']??''),!empty($_POST['customer_consent']));
       $_SESSION['sales_flash']='Order submitted to Admin processing · #'.$oid;
     }
-    redirect(url('?page=sales-customer&id='.$cid.'&saved=1'));
+    redirect(url('?page=sales-customer&id='.$cid.($act==='quick_offer_send'?'':'&saved=1')));
    }catch(Throwable $e){$err=$e->getMessage();}
    $profile=salesperson_customer_360($u,$cid);$cu=$profile['user'];
  }
  $customerProfile=rows("SELECT * FROM customer_profiles WHERE user_id=? LIMIT 1",[$cid])[0]??[];$genericChecklist=rows("SELECT * FROM application_checklists WHERE user_id=? AND order_id IS NULL ORDER BY id",[$cid]);$deals=rows("SELECT d.*,p.name provider FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.status='active' AND p.status='active' ORDER BY p.name,d.category,d.monthly_price");layout_start('Customer 360');?>
  <section class="sales-c360-hero card tilt-card"><div><span class="eyebrow">CUSTOMER 360 · SALES V7</span><h1><?=e($cu['name'])?></h1><p><?=e($cu['email'])?> · <?=e($cu['phone'])?></p><div class="row"><span class="pill"><?=e(strtoupper($cu['status']))?></span><?php if(!empty($profile['source_salesperson'])):?><span class="pill">YOUR CUSTOMER · <?=e($profile['source_salesperson']['name'])?></span><?php endif;?></div></div><div class="c360-kpis"><b><?=count($profile['orders'])?><small>Orders</small></b><b><?=count($profile['quotes'])?><small>Quotes</small></b><b><?=count($profile['documents'])?><small>Docs</small></b></div></section>
- <nav class="quick-contact-bar"><a href="tel:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Call</a><a href="sms:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Text</a><a href="mailto:<?=e($cu['email'])?>">Email app</a><a href="<?=e(url('?page=sales-email&customer_id='.$cid))?>">Sales Email</a><a href="<?=e(url('?page=sales-quotes&customer_id='.$cid))?>">Build Quote</a><a href="<?=e(url('?page=sales-offers&customer_id='.$cid))?>">Send Offer</a></nav>
+ <nav class="quick-contact-bar"><a href="tel:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Call</a><a href="sms:<?=e(preg_replace('/[^0-9+]/','',(string)$cu['phone']))?>">Text</a><a href="mailto:<?=e($cu['email'])?>">Email app</a><a href="<?=e(url('?page=sales-email&customer_id='.$cid))?>">Sales Email</a><a href="<?=e(url('?page=sales-quotes&customer_id='.$cid))?>">Build Quote</a><a href="#sales-quick-offer">Quick Offer</a></nav>
+
+ <?php if(!empty($_SESSION['sales_flash'])):?><p class="alert success" role="status"><?=e($_SESSION['sales_flash']);unset($_SESSION['sales_flash'])?></p><?php endif;?>
+ <section id="sales-quick-offer" class="card sales-quick-offer reveal">
+  <div class="sales-quick-offer-head"><div><span class="eyebrow">QUICK OFFER · <?=e($cu['name'])?></span><h2>Send a deal in seconds.</h2><p class="muted">Choose a live deal, then send it using SecureLink email or copy a ready-to-share message.</p></div><a class="sales-ghost" href="<?=e(url('?page=sales-offers&customer_id='.$cid))?>">Full Offer Sender ↗</a></div>
+  <?php if($deals):?>
+  <form method="post" class="sales-quick-offer-form">
+   <input type="hidden" name="_token" value="<?=e(csrf())?>">
+   <input type="hidden" name="action" value="quick_offer_send">
+   <input type="hidden" name="customer_id" value="<?=$cid?>">
+   <label>Live deal<select name="deal_id" id="sales-quick-offer-select" required><option value="">Select an offer…</option><?php foreach($deals as $offer):?><option value="<?=$offer['id']?>" data-provider="<?=e($offer['provider'])?>" data-name="<?=e($offer['name'])?>" data-price="<?=number_format((float)$offer['monthly_price'],2,'.','')?>" data-speed="<?=e((string)($offer['speed_data']??''))?>"><?=e($offer['provider'].' · '.$offer['name'].' · $'.number_format((float)$offer['monthly_price'],2).'/mo')?></option><?php endforeach;?></select></label>
+   <label>Optional personal note<input name="message" maxlength="1000" placeholder="Optional: I'm happy to answer any questions."></label>
+   <div class="sales-quick-offer-buttons"><button type="submit" class="sales-primary">Send offer email <span aria-hidden="true">↗</span></button><button type="button" class="sales-ghost" data-copy-quick-offer data-first-name="<?=e(explode(' ',trim((string)$cu['name']))[0]?:'there')?>" data-offer-url="<?=e(app_absolute_url('?page=deals'))?>">Copy message</button></div>
+   <small class="sales-quick-offer-status" role="status" aria-live="polite" data-offer-copy-status>Email delivery uses SecureLink's existing notification system.</small>
+  </form>
+  <?php else:?><p class="muted">No active offers are currently available.</p><?php endif;?>
+ </section>
  <?php if(isset($err)):?><p class="alert"><?=e($err)?></p><?php endif;?>
  <div class="sales-c360-grid">
   <section class="card"><span class="eyebrow">CUSTOMER DATA</span><h2>Profile</h2><form method="post"><input type="hidden" name="_token" value="<?=e(csrf())?>"><input type="hidden" name="action" value="profile_save"><input type="hidden" name="customer_id" value="<?=$cid?>"><label>Name<input name="name" value="<?=e($cu['name'])?>" required></label><label>Email<input type="email" name="email" value="<?=e($cu['email'])?>" required></label><label>Phone<input name="phone" value="<?=e($cu['phone'])?>" required></label><label>Service address<input name="address" value="<?=e($customerProfile['service_address']??'')?>"></label><button>Save profile</button></form></section>
