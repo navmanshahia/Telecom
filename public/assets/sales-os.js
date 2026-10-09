@@ -54,4 +54,53 @@ function startShader(canvas){
  document.addEventListener('visibilitychange',()=>{if(document.hidden&&raf){cancelAnimationFrame(raf);raf=0}else if(!document.hidden&&!raf)raf=requestAnimationFrame(draw)});
 }
 document.querySelectorAll('[data-sales-gl]').forEach(startShader);
+
+
+// Customer 360: share the currently selected live offer without leaving the profile.
+// Clipboard errors never send an email or change the customer record.
+document.querySelectorAll('[data-copy-quick-offer]').forEach(button=>{
+ const form=button.closest('.sales-quick-offer-form');
+ const select=form?.querySelector('[name="deal_id"]');
+ const note=form?.querySelector('[name="message"]');
+ const status=form?.querySelector('[data-offer-copy-status]');
+ if(!form||!select)return;
+ button.addEventListener('click',async()=>{
+  const opt=select.selectedOptions?.[0];
+  if(!opt||!select.value){
+   if(status){status.dataset.copyState='error';status.textContent='Select a live offer first.';}
+   select.focus();return;
+  }
+  const first=(button.dataset.firstName||'there').trim();
+  const provider=(opt.dataset.provider||'').trim();
+  const name=(opt.dataset.name||'').trim();
+  const price=Number(opt.dataset.price||0).toFixed(2);
+  const speed=(opt.dataset.speed||'').trim();
+  const personal=(note?.value||'').trim();
+  const url=(button.dataset.offerUrl||'').trim();
+  const message=[
+   'Hi '+first+',',
+   '',
+   'Here is a SecureLink offer I thought you might like:',
+   provider+' · '+name,
+   '$'+price+'/month',
+   ...(speed?[speed]:[]),
+   ...(personal?['',personal]:[]),
+   '',
+   'Review the current offers: '+url,
+   'Reply to me if you would like a personalized quote.'
+  ].join('\n');
+  try{
+   if(!navigator.clipboard?.writeText)throw new Error('Clipboard unavailable');
+   await navigator.clipboard.writeText(message);
+   if(status){status.dataset.copyState='success';status.textContent='Message copied. Ready to paste into SMS, WhatsApp or email.';}
+   const previous=button.textContent;
+   button.textContent='Copied ✓';
+   setTimeout(()=>{button.textContent=previous;},1600);
+  }catch(err){
+   if(status){status.dataset.copyState='error';status.textContent='Automatic copy is not available in this browser. Copy the text from the popup.';}
+   window.prompt('Copy this customer message',message);
+  }
+ });
+});
+
 })();
