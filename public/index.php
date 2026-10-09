@@ -19,7 +19,7 @@ function layout_start(string $title,string $description='Compare curated Interne
  $u=user();$cssv=(string)(@filemtime(__DIR__.'/assets/app.css')?:'1');$jsv=(string)(@filemtime(__DIR__.'/assets/portal.js')?:'1');$currentPage=(string)($_GET['page']??'home');$salesUi=str_starts_with($currentPage,'sales');$salesCssv=(string)(@filemtime(__DIR__.'/assets/sales-os.css')?:'1');$salesJsv=(string)(@filemtime(__DIR__.'/assets/sales-os.js')?:'1'); ?>
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="description" content="<?=e($description)?>"><meta name="theme-color" content="#071022"><meta name="color-scheme" content="dark light"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="SecureLink"><link rel="manifest" href="<?=e(url('manifest.webmanifest'))?>"><link rel="icon" type="image/svg+xml" href="<?=e(url('assets/app-icon.svg'))?>"><link rel="apple-touch-icon" href="<?=e(url('assets/app-icon.svg'))?>"><link rel="stylesheet" href="<?=e(url('assets/app.css?v='.$cssv))?>"><?php if($salesUi):?><link rel="stylesheet" href="<?=e(url('assets/sales-os.css?v='.$salesCssv))?>"><script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.7/gsap.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.7/ScrollTrigger.min.js" defer></script><script defer src="<?=e(url('assets/sales-os.js?v='.$salesJsv))?>"></script><?php endif;?><script defer src="<?=e(url('assets/portal.js?v='.$jsv))?>"></script><title><?=e($title)?> · <?=e(envv('APP_NAME','SecureLink'))?></title></head><body data-page="<?=e($_GET['page']??'home')?>"><a class="skip-link" href="#main-content">Skip to content</a><div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="signal-line"></div><main class="shell" id="main-content"><nav class="nav glass-nav" aria-label="Primary"><a class="brand" href="<?=e(url('/'))?>"><span class="brand-orbit" aria-hidden="true"><i></i><i></i><b></b></span><span>SECURE<span class="brand-accent">LINK</span></span></a><div class="links"><?php if($u): ?><?php if($u['role']==='salesperson'):?><a href="<?=e(url('?page=sales'))?>">Sales Home</a><a href="<?=e(url('?page=sales-deals'))?>">Deals</a><a href="<?=e(url('?page=sales-customers'))?>">Customers</a><a href="<?=e(url('?page=sales-quotes'))?>">Quotes</a><a href="<?=e(url('?page=sales-email'))?>">Email</a><a href="<?=e(url('?page=sales-search'))?>">Search</a><?php else:?><a href="<?=e(url('?page=account'))?>">Home</a><a href="<?=e(url('?page=services'))?>">Services</a><a href="<?=e(url('?page=deals'))?>">Deals</a><a href="<?=e(url('?page=compare'))?>">Compare</a><a href="<?=e(url('?page=referrals'))?>">Refer & Earn</a><a href="<?=e(url('?page=orders'))?>">My Orders</a><?php if(in_array($u['role'],['owner','admin'],true)): ?><a href="<?=e(url('?page=admin'))?>">Admin</a><?php endif; ?><?php endif;?><a href="<?=e(url('?page=logout'))?>">Logout</a><?php else: ?><a href="<?=e(url('?page=login'))?>">Sign in</a><a class="nav-cta" href="<?=e(url('?page=register'))?>">Request access</a><?php endif; ?></div></nav><?php if(!empty($_GET['saved'])):?><div class="toast" role="status">Saved successfully.</div><?php endif; ?><?php
 }
-function layout_end(): void { $u=user(); if($u): ?><?php if($u['role']==='salesperson'):?><nav class="mobile-dock mobile-dock-v2 sales-mobile-dock" aria-label="Sales mobile navigation"><a href="<?=e(url('?page=sales'))?>"><b>⌂</b><span>Home</span></a><a href="<?=e(url('?page=sales-customers'))?>"><b>◎</b><span>Customers</span></a><a href="<?=e(url('?page=sales-deals'))?>"><b>＋</b><span>Sell</span></a><a href="<?=e(url('?page=sales&focus=earnings'))?>"><b>$</b><span>Earnings</span></a><a href="<?=e(url('?page=sales-search'))?>"><b>⌕</b><span>More</span></a></nav><?php else:?><nav class="mobile-dock mobile-dock-v2" aria-label="Mobile navigation"><a href="<?=e(url('?page=account'))?>"><b>⌂</b><span>Home</span></a><a href="<?=e(url('?page=services'))?>"><b>◇</b><span>Services</span></a><a href="<?=e(url('?page=orders'))?>"><b>⇄</b><span>Orders</span></a><a href="<?=e(url('?page=referrals'))?>"><b>★</b><span>Rewards</span></a><a href="<?=e(url('?page=account'))?>"><b>○</b><span>Account</span></a></nav><?php endif;?><?php endif; echo '</main></body></html>'; }
+function layout_end(): void { $u=user(); if($u): ?><?php if($u['role']==='salesperson'):?><nav class="mobile-dock mobile-dock-v2 sales-mobile-dock" aria-label="Sales mobile navigation"><a href="<?=e(url('?page=sales'))?>"><b>⌂</b><span>Home</span></a><a href="<?=e(url('?page=sales-customers'))?>"><b>◎</b><span>Customers</span></a><a href="<?=e(url('?page=sales-deals'))?>"><b>＋</b><span>Sell</span></a><a href="<?=e(url('?page=sales#sales-earnings'))?>"><b>$</b><span>Earnings</span></a><a href="<?=e(url('?page=sales-search'))?>"><b>⌕</b><span>More</span></a></nav><?php else:?><nav class="mobile-dock mobile-dock-v2" aria-label="Mobile navigation"><a href="<?=e(url('?page=account'))?>"><b>⌂</b><span>Home</span></a><a href="<?=e(url('?page=services'))?>"><b>◇</b><span>Services</span></a><a href="<?=e(url('?page=orders'))?>"><b>⇄</b><span>Orders</span></a><a href="<?=e(url('?page=referrals'))?>"><b>★</b><span>Rewards</span></a><a href="<?=e(url('?page=account'))?>"><b>○</b><span>Account</span></a></nav><?php endif;?><?php endif; echo '</main></body></html>'; }
 if($page==='logout'){ session_destroy(); redirect(url('/')); }
 
 if($page==='register'){
@@ -385,25 +385,19 @@ if($page==='sales'){
 </section>
 
 <?php if($u['role']==='salesperson'):?>
-<section class="card sales-pay-rates tier-pay-rates">
+<section id="sales-earnings" class="card sales-pay-rates tier-pay-rates">
  <div class="row between"><div><span class="eyebrow">MY COMMISSION TIER</span><h2><?=e($tierStatus['tier_name'])?> · <?=$tierStatus['activations']?> activated sale<?=$tierStatus['activations']===1?'':'s'?> this month</h2></div><span class="pill tier-<?=e($tierStatus['tier_key'])?>"><?=e(strtoupper($tierStatus['tier_name']))?></span></div>
  <?php if($tierStatus['next']):?><div class="tier-progress"><div><b><?=$tierStatus['remaining']?> more sale<?=$tierStatus['remaining']===1?'':'s'?> to <?=e($tierStatus['next']['name'])?></b><span>First 10 activated sales use Standard. Sale #11 onward uses Premier.</span></div><i><span style="width:<?=min(100,$tierStatus['activations']*10)?>%"></span></i></div><?php else:?><div class="tier-progress premier"><div><b>Premier unlocked</b><span>Every additional activated sale this month uses Premier rates.</span></div><i><span style="width:100%"></span></i></div><?php endif;?>
  <div class="tier-rate-compare">
   <div class="tier-rate-head"><b>Product</b><?php foreach($commissionTiers as $ct):?><b><?=e($ct['name'])?></b><?php endforeach;?></div>
   <?php foreach(salesperson_commission_products() as $key=>$label):?><div class="tier-rate-row <?=($payRates[$key]['override']??false)?'has-override':''?>"><span><?=e($label)?><?php if($payRates[$key]['override']??false):?><small>Personal override</small><?php endif;?></span><?php foreach($commissionTiers as $ct):?><b>$<?=number_format((float)($ct['rates'][$key]??0),2)?></b><?php endforeach;?></div><?php endforeach;?>
  </div>
- <p class="muted">Your calculator below uses your current tier. A personal override, if set by the owner, replaces both tier rates for that product.</p>
+ <p class="muted">Your Standard and Premier rates are shown above. An owner-assigned personal override replaces both tier rates for that product.</p>
 </section>
 <?php endif;?>
 
 <?php if($u['role']==='salesperson'):?>
-<div class="sales-v5-top">
- <section class="card earnings-calculator">
-  <div class="row between"><div><span class="eyebrow">EARNINGS CALCULATOR</span><h2>What would this sale pay me?</h2></div><strong data-earnings-total>$0.00</strong></div>
-  <div class="earning-product-grid"><?php foreach($payRates as $rate):?><label><input type="checkbox" data-earning-amount="<?=number_format((float)$rate['amount'],2,'.','')?>"> <span><?=e($rate['label'])?><b>$<?=number_format((float)$rate['amount'],2)?></b><small><?=e($rate['tier_name'])?></small></span></label><?php endforeach;?></div>
-  <small>Select the products in a possible sale. The calculator uses your current <?=e($tierStatus['tier_name'])?> rate<?=array_filter($payRates,fn($r)=>$r['override'])?' with any personal overrides applied':''?>.</small>
- </section>
- <section class="card target-card">
+<section class="card target-card">
   <span class="eyebrow">THIS MONTH</span><h2>My targets</h2>
   <?php $to=(int)($target['target_orders']??0);$ta=(int)($target['target_activations']??0);$tc=(float)($target['target_commission']??0);?>
   <div class="target-row"><span>Orders</span><b><?=$d['monthOrders']?><?=$to?' / '.$to:''?></b></div>
@@ -411,7 +405,7 @@ if($page==='sales'){
   <div class="target-row"><span>Commission</span><b>$<?=number_format($d['commission'],0)?><?=$tc?' / $'.number_format($tc,0):''?></b></div>
   <?php if(!$to&&!$ta&&!$tc):?><p class="muted">No monthly target has been assigned yet.</p><?php endif;?>
  </section>
-</div>
+
 <?php endif;?>
 
 <div class="sales-grid">
@@ -474,9 +468,6 @@ if($page==='sales'){
   <div class="tablewrap"><table class="table"><tr><th>Order</th><th>Product</th><th>Tier</th><th>Your pay</th><th>Status</th><th>Paid</th></tr><?php foreach($salesLedger as $x):?><tr><td><?=e($x['public_id'])?><br><small><?=e(($x['provider']?:'').' · '.($x['deal']?:''))?></small></td><td><?=e(ucwords(str_replace('_',' ',$x['category'])))?></td><td><span class="pill"><?=e(strtoupper($x['commission_tier']?:'pending'))?></span><?php if(!empty($x['activation_sequence'])):?><br><small>Sale #<?=$x['activation_sequence']?></small><?php endif;?></td><td><strong>$<?=number_format((float)$x['salesperson_amount'],2)?></strong></td><td><span class="pill"><?=e(strtoupper($x['status']))?></span></td><td><?=e($x['paid_at']?:'—')?></td></tr><?php endforeach;if(!$salesLedger):?><tr><td colspan="6">No commission entries yet.</td></tr><?php endif;?></table></div>
  </section>
 </div>
-<script>
-document.querySelectorAll('[data-earning-amount]').forEach(el=>el.addEventListener('change',()=>{let total=0;document.querySelectorAll('[data-earning-amount]:checked').forEach(x=>total+=Number(x.dataset.earningAmount||0));const out=document.querySelector('[data-earnings-total]');if(out)out.textContent='$'+total.toFixed(2);}));
-</script>
 <script>document.querySelectorAll('[data-copy-sales-link]').forEach(b=>b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(b.dataset.copySalesLink);b.textContent='Copied ✓'}catch(e){prompt('Copy link',b.dataset.copySalesLink)}}))</script>
 <?php layout_end();exit;
 }
