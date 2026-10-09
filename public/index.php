@@ -231,6 +231,8 @@ if($page==='sales-customer'){
     }elseif($act==='quick_offer_send'){
       $did=(int)($_POST['deal_id']??0);$note=trim((string)($_POST['message']??''));
       if($did<1)throw new RuntimeException('Choose a live offer before sending.');
+      $activeDeal=(int)scalar("SELECT COUNT(*) FROM deals d JOIN providers p ON p.id=d.provider_id WHERE d.id=? AND d.status='active' AND p.status='active'",[$did]);
+      if(!$activeDeal)throw new RuntimeException('This offer is no longer active. Please select another live offer.');
       if(strlen($note)>1000)throw new RuntimeException('Personal note must be 1000 characters or fewer.');
       $nid=sales_offer_send($u,$cid,$did,$note);
       $status=(string)(scalar("SELECT status FROM notification_queue WHERE id=?",[$nid])?:'queued');
